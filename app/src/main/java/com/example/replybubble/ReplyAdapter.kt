@@ -29,8 +29,8 @@ class ReplyAdapter(
 
         val pair = when (item.level) {
             "稳" -> 0xFFF2F2F7L to 0xFF8E8E93L
-            "进" -> 0xFFE9F7EFL to 0xFF07C160L
-            else -> 0xFFEAF3FFL to 0xFF0A84FFL
+            "进" -> 0x1A34C759L to 0xFF248A3DL
+            else -> 0x1A007AFFL to 0xFF007AFFL
         }
         holder.b.tvTag.backgroundTintList = ColorStateList.valueOf(pair.first.toInt())
         holder.b.tvTag.setTextColor(pair.second.toInt())

@@ -38,12 +38,11 @@ class ReplyActivity : AppCompatActivity() {
 
         binding.btnClose.setOnClickListener { finish() }
         binding.scrim.setOnClickListener { finish() }
+        binding.btnGotoSettings.setOnClickListener { openSettings() }
+        binding.btnSettings.setOnClickListener { openSettings() }
         binding.btnRetry.setOnClickListener {
             loaded = true
             load(force = true)
-        }
-        binding.btnSettings.setOnClickListener {
-            startActivity(Intent(this, SettingsActivity::class.java))
         }
     }
 
@@ -67,6 +66,18 @@ class ReplyActivity : AppCompatActivity() {
         binding.scrim.animate().alpha(1f).setDuration(220L).start()
     }
 
+    private fun openSettings() {
+        startActivity(Intent(this, SettingsActivity::class.java))
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // 从设置页回来，如果之前是空状态，重新走一遍
+        if (loaded && Prefs.apiKey(this).isNotBlank() && binding.emptyState.visibility == View.VISIBLE) {
+            load()
+        }
+    }
+
     /**
      * 剪贴板在 Android 10+ 只对「有焦点」的应用开放。
      * 等窗口真正拿到焦点再读，比在 onCreate 里读稳。
@@ -80,6 +91,13 @@ class ReplyActivity : AppCompatActivity() {
     }
 
     private fun load(force: Boolean = false) {
+        val pack = ContentStore.current(this)
+
+        if (Prefs.apiKey(this).isBlank()) {
+            showEmptyKeyState(pack.version)
+            return
+        }
+
         val raw = readClipboard()
         if (raw.isNullOrBlank()) {
             showError("剪贴板是空的。\n\n先去聊天里长按对方那条消息 → 复制，再点悬浮球。\n也可以多选几条一起复制，我会读成上下文。")
@@ -101,10 +119,10 @@ class ReplyActivity : AppCompatActivity() {
             return
         }
 
-        val contextHint = if (parsed.history.isEmpty()) "" else "（含 ${parsed.history.size} 条上文）"
-        binding.tvSource.text = "内容包 ${ContentStore.current(this).version} · 对方：$contextHint" +
-            parsed.target.replace("\n", " ").take(40)
-        binding.tvSource.visibility = View.VISIBLE
+        val contextHint = if (parsed.history.isEmpty()) "" else " · ${parsed.history.size} 条上文"
+        binding.tvSubtitle.text = "内容包 ${pack.version} · 对方：${parsed.target.replace("\n", " ").take(18)}$contextHint"
+
+        binding.emptyState.visibility = View.GONE
         binding.errorScroll.visibility = View.GONE
         binding.list.visibility = View.GONE
         binding.loading.visibility = View.VISIBLE
@@ -132,9 +150,19 @@ class ReplyActivity : AppCompatActivity() {
         }
     }
 
+    private fun showEmptyKeyState(packVersion: Int) {
+        binding.tvSubtitle.text = "内容包 $packVersion · 还没配置 Key"
+        binding.loading.visibility = View.GONE
+        binding.list.visibility = View.GONE
+        binding.errorScroll.visibility = View.GONE
+        binding.emptyState.visibility = View.VISIBLE
+        binding.btnRetry.isEnabled = false
+    }
+
     private fun showError(message: String) {
         binding.loading.visibility = View.GONE
         binding.list.visibility = View.GONE
+        binding.emptyState.visibility = View.GONE
         binding.tvError.text = message
         binding.errorScroll.visibility = View.VISIBLE
         binding.btnRetry.isEnabled = true

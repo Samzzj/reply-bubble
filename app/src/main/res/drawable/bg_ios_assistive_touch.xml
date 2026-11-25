@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- 1. 外层圆角深色半透明基座 (类似 iPhone 小白点底座) -->
+    <item>
+        <shape android:shape="rectangle">
+            <solid android:color="#CC242426" />
+            <corners android:radius="16dp" />
+            <stroke
+                android:width="1dp"
+                android:color="#33FFFFFF" />
+            <size
+                android:width="56dp"
+                android:height="56dp" />
+        </shape>
+    </item>
+
+    <!-- 2. 外层同心圆光晕 -->
+    <item
+        android:bottom="8dp"
+        android:left="8dp"
+        android:right="8dp"
+        android:top="8dp">
+        <shape android:shape="oval">
+            <solid android:color="#26FFFFFF" />
+        </shape>
+    </item>
+
+    <!-- 3. 中层同心圆光晕 -->
+    <item
+        android:bottom="13dp"
+        android:left="13dp"
+        android:right="13dp"
+        android:top="13dp">
+        <shape android:shape="oval">
+            <solid android:color="#4DFFFFFF" />
+        </shape>
+    </item>
+
+    <!-- 4. 核心高光小白点 -->
+    <item
+        android:bottom="18dp"
+        android:left="18dp"
+        android:right="18dp"
+        android:top="18dp">
+        <shape android:shape="oval">
+            <solid android:color="#F5FFFFFF" />
+        </shape>
+    </item>
+</layer-list>

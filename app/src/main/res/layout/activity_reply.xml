@@ -32,52 +32,63 @@
             android:gravity="center_vertical"
             android:orientation="horizontal"
             android:paddingStart="20dp"
-            android:paddingEnd="12dp">
+            android:paddingEnd="16dp">
 
-            <TextView
+            <LinearLayout
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:text="AI 回复"
-                android:textColor="@color/ios_label"
-                android:textSize="20sp"
-                android:textStyle="bold" />
+                android:orientation="vertical">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="AI 回复"
+                    android:textColor="@color/ios_label"
+                    android:textSize="20sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/tvSubtitle"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="3dp"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:textColor="@color/ios_secondary"
+                    android:textSize="13sp" />
+            </LinearLayout>
 
             <TextView
                 android:id="@+id/btnSettings"
                 android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:padding="10dp"
+                android:layout_height="32dp"
+                android:background="@drawable/bg_capsule_chip"
+                android:gravity="center"
+                android:paddingStart="14dp"
+                android:paddingEnd="14dp"
                 android:text="设置"
                 android:textColor="@color/ios_blue"
-                android:textSize="16sp" />
+                android:textSize="14sp" />
 
             <TextView
                 android:id="@+id/btnClose"
                 android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:padding="10dp"
+                android:layout_height="32dp"
+                android:layout_marginStart="8dp"
+                android:background="@drawable/bg_capsule_chip"
+                android:gravity="center"
+                android:paddingStart="14dp"
+                android:paddingEnd="14dp"
                 android:text="关闭"
-                android:textColor="@color/ios_blue"
-                android:textSize="16sp" />
+                android:textColor="@color/ios_secondary"
+                android:textSize="14sp" />
         </LinearLayout>
-
-        <TextView
-            android:id="@+id/tvSource"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="2dp"
-            android:ellipsize="end"
-            android:maxLines="2"
-            android:paddingStart="20dp"
-            android:paddingEnd="20dp"
-            android:textColor="@color/ios_secondary"
-            android:textSize="13sp" />
 
         <FrameLayout
             android:layout_width="match_parent"
             android:layout_height="0dp"
-            android:layout_marginTop="12dp"
+            android:layout_marginTop="14dp"
             android:layout_weight="1">
 
             <androidx.recyclerview.widget.RecyclerView
@@ -129,6 +140,52 @@
                     android:textSize="15sp" />
             </ScrollView>
 
+            <!-- 空状态：还没填 Key -->
+            <LinearLayout
+                android:id="@+id/emptyState"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center"
+                android:layout_marginStart="20dp"
+                android:layout_marginEnd="20dp"
+                android:background="@drawable/bg_card_status"
+                android:gravity="center"
+                android:orientation="vertical"
+                android:padding="24dp"
+                android:visibility="gone">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="还没设置 API Key"
+                    android:textColor="@color/ios_label"
+                    android:textSize="17sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:gravity="center"
+                    android:lineSpacingExtra="4dp"
+                    android:text="填好接口地址和 Key 之后，这里就会生成 3 条回复"
+                    android:textColor="@color/ios_secondary"
+                    android:textSize="13sp" />
+
+                <TextView
+                    android:id="@+id/btnGotoSettings"
+                    android:layout_width="wrap_content"
+                    android:layout_height="48dp"
+                    android:layout_marginTop="18dp"
+                    android:background="@drawable/bg_capsule_primary"
+                    android:gravity="center"
+                    android:paddingStart="26dp"
+                    android:paddingEnd="26dp"
+                    android:text="去填写 API Key"
+                    android:textColor="#FFFFFF"
+                    android:textSize="15sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
         </FrameLayout>
 
         <TextView
@@ -138,7 +195,7 @@
             android:layout_marginStart="20dp"
             android:layout_marginTop="8dp"
             android:layout_marginEnd="20dp"
-            android:background="@drawable/bg_button_secondary"
+            android:background="@drawable/bg_capsule_soft_blue"
             android:gravity="center"
             android:text="换一批"
             android:textColor="@color/ios_blue"

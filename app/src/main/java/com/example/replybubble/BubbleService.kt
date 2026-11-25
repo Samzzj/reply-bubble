@@ -23,7 +23,8 @@ import androidx.core.app.ServiceCompat
 import kotlin.math.abs
 
 /**
- * 悬浮球：iOS 小白点观感，拖动松手后吸附到最近一侧，闲置几秒自动变淡。
+ * 悬浮球：iPhone 辅助触控（小白点）观感。
+ * 按下 0.92 缩放 + 完全可见，松手回弹；闲置 3 秒降到 45% 透明度；拖动松手吸附到最近一侧。
  */
 class BubbleService : Service() {
 
@@ -31,6 +32,7 @@ class BubbleService : Service() {
         private const val CHANNEL_ID = "reply_bubble"
         private const val NOTIF_ID = 42
         private const val IDLE_ALPHA = 0.45f
+        private const val IDLE_DELAY = 3000L
 
         @Volatile
         var running: Boolean = false
@@ -133,7 +135,7 @@ class BubbleService : Service() {
         return try {
             wm.addView(view, params)
             bubble = view
-            view.postDelayed(idleDim, 3000L)
+            view.postDelayed(idleDim, IDLE_DELAY)
             true
         } catch (e: Exception) {
             false
@@ -155,9 +157,9 @@ class BubbleService : Service() {
                     startX = params.x
                     startY = params.y
                     dragging = false
-                    v.animate().cancel()
-                    v.animate().alpha(1f).setDuration(120L).start()
                     v.removeCallbacks(idleDim)
+                    v.animate().cancel()
+                    v.animate().scaleX(0.92f).scaleY(0.92f).alpha(1f).setDuration(110L).start()
                     true
                 }
 
@@ -180,13 +182,19 @@ class BubbleService : Service() {
                 }
 
                 MotionEvent.ACTION_UP -> {
+                    v.animate().scaleX(1f).scaleY(1f).alpha(1f).setDuration(180L).start()
                     if (dragging) {
                         snapToEdge(v)
-                        v.postDelayed(idleDim, 2500L)
                     } else {
-                        v.postDelayed(idleDim, 3000L)
                         openPanel()
                     }
+                    v.postDelayed(idleDim, IDLE_DELAY)
+                    true
+                }
+
+                MotionEvent.ACTION_CANCEL -> {
+                    v.animate().scaleX(1f).scaleY(1f).alpha(1f).setDuration(180L).start()
+                    v.postDelayed(idleDim, IDLE_DELAY)
                     true
                 }
 
