@@ -4,6 +4,9 @@ on:
   push:
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -36,9 +39,20 @@ jobs:
           chmod +x ./gradlew
           ./gradlew :app:assembleDebug --no-daemon --stacktrace
 
-      - name: Upload APK
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: reply-bubble-debug-apk
           path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
+
+      # 自动发版：Releases 页面直接能下载 apk
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VER="v0.1.${GITHUB_RUN_NUMBER}"
+          cp app/build/outputs/apk/debug/app-debug.apk "reply-bubble-${VER}-debug.apk"
+          gh release create "$VER" "reply-bubble-${VER}-debug.apk" \
+            --title "回复球 ${VER}" \
+            --notes "自动构建的 debug APK，在本页下方 Assets 里下载。安装后先在 App 里填 API Key 和人设卡，再开启悬浮球并授权「显示在其他应用上层」。"
