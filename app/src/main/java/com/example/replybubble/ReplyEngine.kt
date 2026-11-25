@@ -31,7 +31,7 @@ object ContextParser {
         val lines = raw.split('\n').map { it.trim() }.filter { it.isNotEmpty() }
         if (lines.isEmpty()) return ParsedContext("", emptyList())
 
-        val withSpeaker = lines.count { SPEAKER.matches(it) >= 0 && SPEAKER.find(it) != null }
+        val withSpeaker = lines.count { SPEAKER.matches(it) }
         return when {
             withSpeaker >= 2 -> {
                 val normalized = lines.map { line ->
