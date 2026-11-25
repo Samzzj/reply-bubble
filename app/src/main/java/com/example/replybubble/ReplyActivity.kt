@@ -6,6 +6,7 @@ import android.content.Intent
 import android.os.Build
 import android.os.Bundle
 import android.view.View
+import android.view.WindowManager
 import android.view.animation.DecelerateInterpolator
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
@@ -17,6 +18,10 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
 class ReplyActivity : AppCompatActivity() {
+
+    companion object {
+        private const val BLUR_RADIUS = 60
+    }
 
     private lateinit var binding: ActivityReplyBinding
     private val adapter = ReplyAdapter { copyAndFinish(it.text) }
@@ -46,11 +51,32 @@ class ReplyActivity : AppCompatActivity() {
         }
     }
 
-    /** iOS 那种背后模糊；不支持就退化成半透明遮罩 */
+    /** iOS 那种背后模糊：Android 12+ 且系统开启跨窗口模糊时生效，否则退化成半透明遮罩 */
     private fun setupWindow() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            runCatching { window.setBackgroundBlurRadius(60) }
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
+            fallbackScrim()
+            return
         }
+        val wm = getSystemService(WindowManager::class.java)
+        val crossBlur = runCatching { wm.isCrossWindowBlurEnabled }.getOrDefault(false)
+        if (!crossBlur) {
+            fallbackScrim()
+            return
+        }
+        val ok = runCatching {
+            window.addFlags(WindowManager.LayoutParams.FLAG_BLUR_BEHIND)
+            window.setBackgroundBlurRadius(BLUR_RADIUS)
+        }.isSuccess
+        if (ok) {
+            // 模糊生效时遮罩调淡，让毛玻璃透出来
+            binding.scrim.setBackgroundColor(0x33000000)
+        } else {
+            fallbackScrim()
+        }
+    }
+
+    private fun fallbackScrim() {
+        binding.scrim.setBackgroundColor(0x66000000)
     }
 
     private fun playEntrance() {
