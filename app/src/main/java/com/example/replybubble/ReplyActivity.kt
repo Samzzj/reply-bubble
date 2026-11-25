@@ -1,0 +1,133 @@
+package com.example.replybubble
+
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Intent
+import android.os.Bundle
+import android.view.View
+import android.widget.Toast
+import androidx.appcompat.app.AppCompatActivity
+import androidx.lifecycle.lifecycleScope
+import androidx.recyclerview.widget.LinearLayoutManager
+import com.example.replybubble.databinding.ActivityReplyBinding
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
+
+class ReplyActivity : AppCompatActivity() {
+
+    private lateinit var binding: ActivityReplyBinding
+    private val adapter = ReplyAdapter { copyAndFinish(it.text) }
+
+    private var loaded = false
+    private var job: Job? = null
+    private var generation = 0
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        binding = ActivityReplyBinding.inflate(layoutInflater)
+        setContentView(binding.root)
+
+        binding.list.layoutManager = LinearLayoutManager(this)
+        binding.list.adapter = adapter
+
+        binding.btnClose.setOnClickListener { finish() }
+        binding.scrim.setOnClickListener { finish() }
+        binding.btnRetry.setOnClickListener {
+            loaded = true
+            load(force = true)
+        }
+        binding.btnSettings.setOnClickListener {
+            startActivity(Intent(this, SettingsActivity::class.java))
+        }
+    }
+
+    /**
+     * 剪贴板在 Android 10+ 只对「有焦点」的应用开放。
+     * 等窗口真正拿到焦点再读，比在 onCreate 里读稳。
+     */
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus && !loaded) {
+            loaded = true
+            load()
+        }
+    }
+
+    private fun load(force: Boolean = false) {
+        val text = readClipboard()
+        if (text.isNullOrBlank()) {
+            showError("剪贴板是空的。\n\n先去聊天里长按对方那条消息 → 复制，再点悬浮球。")
+            return
+        }
+
+        if (!force && text == Prefs.lastCopied(this)) {
+            showError(
+                "剪贴板里还是你上次复制的那条回复。\n\n" +
+                    "先回聊天里复制对方的新消息，再点悬浮球；\n" +
+                    "想用同一句话再生成一批，点下面「换一批」。"
+            )
+            return
+        }
+
+        binding.tvSource.text = "对方消息：" + text.replace("\n", " ").take(60)
+        binding.tvSource.visibility = View.VISIBLE
+        binding.tvError.visibility = View.GONE
+        binding.list.visibility = View.GONE
+        binding.loading.visibility = View.VISIBLE
+        binding.btnRetry.isEnabled = false
+
+        job?.cancel()
+        val gen = ++generation
+        job = lifecycleScope.launch {
+            try {
+                val replies = ReplyEngine.generate(this@ReplyActivity, text)
+                if (gen != generation) return@launch
+                adapter.submit(replies)
+                binding.list.visibility = View.VISIBLE
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                if (gen != generation) return@launch
+                showError(e.message ?: "请求失败，检查下网络或接口配置")
+            } finally {
+                if (gen == generation) {
+                    binding.loading.visibility = View.GONE
+                    binding.btnRetry.isEnabled = true
+                }
+            }
+        }
+    }
+
+    private fun showError(message: String) {
+        binding.loading.visibility = View.GONE
+        binding.list.visibility = View.GONE
+        binding.tvError.text = message
+        binding.tvError.visibility = View.VISIBLE
+        binding.btnRetry.isEnabled = true
+    }
+
+    private fun readClipboard(): String? = try {
+        val cm = getSystemService(ClipboardManager::class.java)
+        val clip = cm.primaryClip
+        if (clip == null || clip.itemCount == 0) {
+            null
+        } else {
+            clip.getItemAt(0).coerceToText(this)?.toString()?.trim()
+        }
+    } catch (e: Exception) {
+        null
+    }
+
+    private fun copyAndFinish(text: String) {
+        try {
+            val cm = getSystemService(ClipboardManager::class.java)
+            cm.setPrimaryClip(ClipData.newPlainText("reply", text))
+            Prefs.setLastCopied(this, text)
+            Toast.makeText(this, "已复制，回聊天窗口长按粘贴", Toast.LENGTH_SHORT).show()
+        } catch (e: Exception) {
+            Toast.makeText(this, "复制失败：${e.message}", Toast.LENGTH_SHORT).show()
+        }
+        finish()
+    }
+}
