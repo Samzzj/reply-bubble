@@ -75,11 +75,34 @@ B 组 · 军师接话（3 条）
                 )
             }
 
-            val raw = post(url, key, body.toString())
-            parseReplies(raw)
+            parseReplies(post(url, key, body.toString()))
         }
 
+    /**
+     * 设置页的「测试连接」：发一个最小请求，只关心能不能通。
+     */
+    suspend fun test(context: Context): String = withContext(Dispatchers.IO) {
+        val url = Prefs.apiUrl(context)
+        val key = Prefs.apiKey(context)
+        val model = Prefs.model(context)
+        if (key.isBlank()) throw IOException("Key 是空的")
+
+        val body = JSONObject().apply {
+            put("model", model)
+            put("max_tokens", 8)
+            put(
+                "messages",
+                JSONArray().apply {
+                    put(JSONObject().put("role", "user").put("content", "ping"))
+                }
+            )
+        }
+        val raw = post(url, key, body.toString())
+        "连接正常 ✓\n模型 $model 已响应（返回 ${raw.length} 字节）"
+    }
+
     private fun post(url: String, key: String, body: String): String {
+        val host = runCatching { URL(url).host }.getOrDefault(url)
         val conn = (URL(url).openConnection() as HttpURLConnection).apply {
             requestMethod = "POST"
             connectTimeout = 10_000
@@ -93,12 +116,47 @@ B 组 · 军师接话（3 条）
             val code = conn.responseCode
             val stream = if (code in 200..299) conn.inputStream else conn.errorStream
             val text = stream?.bufferedReader()?.use { it.readText() } ?: ""
-            if (code !in 200..299) {
-                throw IOException("接口返回 $code：${text.take(160)}")
-            }
+            if (code !in 200..299) throw IOException(friendlyError(code, text, host))
             return text
         } finally {
             conn.disconnect()
+        }
+    }
+
+    /**
+     * 服务端的原话对普通用户没有可操作性，这里翻译成能照着做的提示。
+     */
+    private fun friendlyError(code: Int, body: String, host: String): String {
+        val serverMsg = runCatching {
+            JSONObject(body).getJSONObject("error").optString("message")
+        }.getOrNull().orEmpty().ifBlank { body.take(200) }
+
+        return when (code) {
+            401 -> """
+                Key 被服务端拒绝了（401）。
+                • 确认这个 Key 是 $host 对应平台生成的
+                • 清空输入框后整个重新粘贴，别手打（容易把 "sk-" 打成全角 "sk－"）
+                • 刚生成的 Key 有时要等一两分钟生效
+                服务端原话：$serverMsg
+            """.trimIndent()
+
+            402, 403 -> """
+                账号状态有问题（$code），常见原因是余额不足或该 Key 没有这个模型的权限。
+                服务端原话：$serverMsg
+            """.trimIndent()
+
+            404 -> """
+                接口地址不对（404）。
+                DeepSeek 应为：https://api.deepseek.com/chat/completions
+                服务端原话：$serverMsg
+            """.trimIndent()
+
+            429 -> """
+                请求太频繁（429），等十几秒再试。
+                服务端原话：$serverMsg
+            """.trimIndent()
+
+            else -> "接口返回 $code。\n服务端原话：$serverMsg"
         }
     }
 

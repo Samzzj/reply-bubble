@@ -72,7 +72,7 @@ class ReplyActivity : AppCompatActivity() {
 
         binding.tvSource.text = "对方消息：" + text.replace("\n", " ").take(60)
         binding.tvSource.visibility = View.VISIBLE
-        binding.tvError.visibility = View.GONE
+        binding.errorScroll.visibility = View.GONE
         binding.list.visibility = View.GONE
         binding.loading.visibility = View.VISIBLE
         binding.btnRetry.isEnabled = false
@@ -103,7 +103,7 @@ class ReplyActivity : AppCompatActivity() {
         binding.loading.visibility = View.GONE
         binding.list.visibility = View.GONE
         binding.tvError.text = message
-        binding.tvError.visibility = View.VISIBLE
+        binding.errorScroll.visibility = View.VISIBLE
         binding.btnRetry.isEnabled = true
     }
 

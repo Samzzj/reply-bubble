@@ -99,16 +99,22 @@
                     android:textSize="13sp" />
             </LinearLayout>
 
-            <TextView
-                android:id="@+id/tvError"
+            <ScrollView
+                android:id="@+id/errorScroll"
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
-                android:gravity="center"
-                android:lineSpacingExtra="4dp"
-                android:padding="24dp"
-                android:textColor="@color/text_secondary"
-                android:textSize="13sp"
-                android:visibility="gone" />
+                android:visibility="gone">
+
+                <TextView
+                    android:id="@+id/tvError"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center"
+                    android:lineSpacingExtra="4dp"
+                    android:padding="20dp"
+                    android:textColor="@color/text_secondary"
+                    android:textSize="13sp" />
+            </ScrollView>
 
         </FrameLayout>
 
