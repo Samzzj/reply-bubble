@@ -120,9 +120,12 @@ class BubbleService : Service() {
     private fun addBubble(): Boolean {
         val view = LayoutInflater.from(this).inflate(R.layout.view_bubble, null)
         val screenH = resources.displayMetrics.heightPixels
+        // 必须给死尺寸：WRAP_CONTENT 在 WindowManager 下会用 UNSPECIFIED 测量，
+        // 普通 View 没有内容会直接摊成整屏（之前那个巨大的深色块就是这个原因）。
+        val size = (56 * resources.displayMetrics.density).toInt()
         params = WindowManager.LayoutParams(
-            WindowManager.LayoutParams.WRAP_CONTENT,
-            WindowManager.LayoutParams.WRAP_CONTENT,
+            size,
+            size,
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
             PixelFormat.TRANSLUCENT
