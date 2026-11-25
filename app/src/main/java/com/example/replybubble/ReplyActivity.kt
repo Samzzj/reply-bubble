@@ -3,8 +3,10 @@ package com.example.replybubble
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Intent
+import android.os.Build
 import android.os.Bundle
 import android.view.View
+import android.view.animation.DecelerateInterpolator
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
@@ -28,6 +30,9 @@ class ReplyActivity : AppCompatActivity() {
         binding = ActivityReplyBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
+        setupWindow()
+        playEntrance()
+
         binding.list.layoutManager = LinearLayoutManager(this)
         binding.list.adapter = adapter
 
@@ -40,6 +45,26 @@ class ReplyActivity : AppCompatActivity() {
         binding.btnSettings.setOnClickListener {
             startActivity(Intent(this, SettingsActivity::class.java))
         }
+    }
+
+    /** iOS 那种背后模糊；不支持就退化成半透明遮罩 */
+    private fun setupWindow() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            runCatching { window.setBackgroundBlurRadius(60) }
+        }
+    }
+
+    private fun playEntrance() {
+        val offset = 260f * resources.displayMetrics.density
+        binding.panel.translationY = offset
+        binding.panel.animate()
+            .translationY(0f)
+            .setDuration(280L)
+            .setInterpolator(DecelerateInterpolator())
+            .start()
+
+        binding.scrim.alpha = 0f
+        binding.scrim.animate().alpha(1f).setDuration(220L).start()
     }
 
     /**

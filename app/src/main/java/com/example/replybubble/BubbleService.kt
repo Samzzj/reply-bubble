@@ -1,5 +1,6 @@
 package com.example.replybubble
 
+import android.animation.ValueAnimator
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
@@ -15,16 +16,21 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.ViewConfiguration
 import android.view.WindowManager
+import android.view.animation.DecelerateInterpolator
 import android.widget.Toast
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import kotlin.math.abs
 
+/**
+ * 悬浮球：iOS 小白点观感，拖动松手后吸附到最近一侧，闲置几秒自动变淡。
+ */
 class BubbleService : Service() {
 
     companion object {
         private const val CHANNEL_ID = "reply_bubble"
         private const val NOTIF_ID = 42
+        private const val IDLE_ALPHA = 0.45f
 
         @Volatile
         var running: Boolean = false
@@ -35,6 +41,11 @@ class BubbleService : Service() {
     private lateinit var params: WindowManager.LayoutParams
     private var bubble: View? = null
     private var touchSlop = 0
+
+    private val idleDim = Runnable {
+        bubble?.animate()?.alpha(IDLE_ALPHA)?.setDuration(350L)?.start()
+        Unit
+    }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -56,6 +67,7 @@ class BubbleService : Service() {
 
     override fun onDestroy() {
         bubble?.let {
+            it.removeCallbacks(idleDim)
             try {
                 wm.removeView(it)
             } catch (_: Exception) {
@@ -105,6 +117,7 @@ class BubbleService : Service() {
 
     private fun addBubble(): Boolean {
         val view = LayoutInflater.from(this).inflate(R.layout.view_bubble, null)
+        val screenH = resources.displayMetrics.heightPixels
         params = WindowManager.LayoutParams(
             WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.WRAP_CONTENT,
@@ -113,13 +126,14 @@ class BubbleService : Service() {
             PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.TOP or Gravity.START
-            x = 24
-            y = 320
+            x = 0
+            y = (screenH * 0.55f).toInt()
         }
         attachDrag(view)
         return try {
             wm.addView(view, params)
             bubble = view
+            view.postDelayed(idleDim, 3000L)
             true
         } catch (e: Exception) {
             false
@@ -141,6 +155,9 @@ class BubbleService : Service() {
                     startX = params.x
                     startY = params.y
                     dragging = false
+                    v.animate().cancel()
+                    v.animate().alpha(1f).setDuration(120L).start()
+                    v.removeCallbacks(idleDim)
                     true
                 }
 
@@ -163,12 +180,33 @@ class BubbleService : Service() {
                 }
 
                 MotionEvent.ACTION_UP -> {
-                    if (!dragging) openPanel()
+                    if (dragging) {
+                        snapToEdge(v)
+                        v.postDelayed(idleDim, 2500L)
+                    } else {
+                        v.postDelayed(idleDim, 3000L)
+                        openPanel()
+                    }
                     true
                 }
 
                 else -> false
             }
+        }
+    }
+
+    /** 松手后吸附到最近的一侧，像 iOS 小白点那样贴边 */
+    private fun snapToEdge(view: View) {
+        val screenW = resources.displayMetrics.widthPixels
+        val target = if (params.x + view.width / 2 < screenW / 2) 0 else screenW - view.width
+        ValueAnimator.ofInt(params.x, target).apply {
+            duration = 220L
+            interpolator = DecelerateInterpolator()
+            addUpdateListener {
+                params.x = it.animatedValue as Int
+                runCatching { wm.updateViewLayout(view, params) }
+            }
+            start()
         }
     }
 

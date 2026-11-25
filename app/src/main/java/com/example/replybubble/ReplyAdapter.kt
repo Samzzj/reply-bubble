@@ -1,5 +1,6 @@
 package com.example.replybubble
 
+import android.content.res.ColorStateList
 import android.view.LayoutInflater
 import android.view.ViewGroup
 import androidx.recyclerview.widget.RecyclerView
@@ -25,6 +26,15 @@ class ReplyAdapter(
     override fun onBindViewHolder(holder: Holder, position: Int) {
         val item = items[position]
         holder.b.tvTag.text = levelLabel(item.level)
+
+        val pair = when (item.level) {
+            "稳" -> 0xFFF2F2F7L to 0xFF8E8E93L
+            "进" -> 0xFFE9F7EFL to 0xFF07C160L
+            else -> 0xFFEAF3FFL to 0xFF0A84FFL
+        }
+        holder.b.tvTag.backgroundTintList = ColorStateList.valueOf(pair.first.toInt())
+        holder.b.tvTag.setTextColor(pair.second.toInt())
+
         holder.b.tvText.text = item.text
         holder.b.root.setOnClickListener { onClick(item) }
     }

@@ -20,7 +20,25 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      # 运行器镜像自带 Android SDK；这里只做尽力而为的补齐，失败不影响构建
+      # 固定签名：第一次跑时生成并提交回仓库，之后所有版本都能覆盖安装
+      - name: Ensure stable debug keystore
+        run: |
+          if [ ! -f keystore/debug.jks ]; then
+            echo "generating keystore"
+            mkdir -p keystore
+            keytool -genkeypair -keystore keystore/debug.jks -storepass android -keypass android \
+              -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10950 \
+              -dname "CN=Android Debug,O=Android,C=US"
+            git config user.email "ci@localhost"
+            git config user.name "ci"
+            git add keystore/debug.jks
+            git commit -m "chore: 固定 debug 签名，让后续版本可覆盖安装"
+            git push
+          else
+            echo "keystore already present"
+          fi
+
+      # 运行器镜像自带 Android SDK；这里只做尽力而为的补齐
       - name: Ensure SDK platform 34
         run: |
           echo "ANDROID_HOME=$ANDROID_HOME"
@@ -46,13 +64,12 @@ jobs:
           path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
 
-      # 自动发版：Releases 页面直接能下载 apk
       - name: Publish release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          VER="v0.1.${GITHUB_RUN_NUMBER}"
+          VER="v0.2.${GITHUB_RUN_NUMBER}"
           cp app/build/outputs/apk/debug/app-debug.apk "reply-bubble-${VER}-debug.apk"
           gh release create "$VER" "reply-bubble-${VER}-debug.apk" \
             --title "回复球 ${VER}" \
-            --notes "自动构建的 debug APK，在本页下方 Assets 里下载。安装后先在 App 里填 API Key 和人设卡，再开启悬浮球并授权「显示在其他应用上层」。"
+            --notes "iOS 风悬浮球 + 底部面板，字号加大。从这一版起使用固定签名，可直接覆盖安装。"

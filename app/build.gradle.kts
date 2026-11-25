@@ -15,6 +15,20 @@ android {
         versionName = "0.1.0"
     }
 
+    signingConfigs {
+        // 固定 debug 签名：CI 首次构建时生成并提交回仓库，
+        // 之后所有版本签名一致，可以覆盖安装、不丢设置。
+        getByName("debug") {
+            val ks = rootProject.file("keystore/debug.jks")
+            if (ks.exists()) {
+                storeFile = ks
+                storePassword = "android"
+                keyAlias = "androiddebugkey"
+                keyPassword = "android"
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false

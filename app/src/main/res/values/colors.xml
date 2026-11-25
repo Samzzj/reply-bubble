@@ -7,4 +7,12 @@
     <color name="panel_bg">#FFFFFF</color>
     <color name="scrim">#66000000</color>
     <color name="divider">#1F000000</color>
+
+    <!-- iOS 风格调色 -->
+    <color name="ios_grouped_bg">#F9F9FB</color>
+    <color name="ios_label">#1C1C1E</color>
+    <color name="ios_secondary">#8E8E93</color>
+    <color name="ios_fill">#EFEFF4</color>
+    <color name="ios_blue">#0A84FF</color>
+    <color name="ios_separator">#3C3C43</color>
 </resources>

@@ -6,7 +6,7 @@
         <item name="colorSecondary">@color/accent</item>
     </style>
 
-    <!-- 面板固定浅色，避免深色模式下卡片/文字配色错乱 -->
+    <!-- 底部面板：透明窗口 + 自己画圆角，方便做 iOS 的 sheet 观感 -->
     <style name="Theme.ReplyPanel" parent="Theme.Material3.Light.NoActionBar">
         <item name="android:windowIsTranslucent">true</item>
         <item name="android:windowBackground">@android:color/transparent</item>
@@ -15,6 +15,7 @@
         <item name="android:windowIsFloating">false</item>
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowAnimationStyle">@null</item>
     </style>
 
 </resources>
