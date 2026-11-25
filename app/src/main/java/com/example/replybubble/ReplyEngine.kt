@@ -10,77 +10,83 @@ import java.net.HttpURLConnection
 import java.net.URL
 
 data class Reply(
-    val group: String,
-    val tag: String,
+    val level: String,
     val text: String
 )
 
+data class ParsedContext(
+    val target: String,
+    val history: List<String>
+)
+
+/**
+ * 剪贴板可能是一整段对话。
+ * 有「我：」「她：」这样的说话人前缀就整段当上下文；没有就把最后一行当目标。
+ */
+object ContextParser {
+
+    private val SPEAKER = Regex("""^\s*([\p{IsHan}A-Za-z0-9_]{1,6})\s*[：:]\s*(.+)$""")
+
+    fun parse(raw: String): ParsedContext {
+        val lines = raw.split('\n').map { it.trim() }.filter { it.isNotEmpty() }
+        if (lines.isEmpty()) return ParsedContext("", emptyList())
+
+        val withSpeaker = lines.count { SPEAKER.matches(it) >= 0 && SPEAKER.find(it) != null }
+        return when {
+            withSpeaker >= 2 -> {
+                val normalized = lines.map { line ->
+                    val m = SPEAKER.find(line)
+                    if (m != null) "${m.groupValues[1]}：${m.groupValues[2].trim()}" else line
+                }
+                val last = normalized.last()
+                val target = SPEAKER.find(last)?.groupValues?.get(2)?.trim() ?: last
+                ParsedContext(target, normalized.dropLast(1).takeLast(8))
+            }
+
+            lines.size == 1 -> ParsedContext(lines[0], emptyList())
+
+            else -> ParsedContext(lines.last(), lines.dropLast(1).takeLast(8))
+        }
+    }
+}
+
 object ReplyEngine {
 
-    /**
-     * 一次请求返回 6 条（A 组 3 条短句 + B 组 3 条军师）。
-     * 一次请求比两次并发更快、更便宜，结构也更稳。
-     */
-    private const val SYSTEM = """你是一个中文微信聊天回复助手。用户会给你对方刚发来的一条消息，你要给出 6 条可以直接发送的回复，分两组。
-
-A 组 · 短句直球（3 条）
-- 一句话，不超过 28 个字，口语，像在微信上随手打的
-- 先给结论，不解释；可以自嘲、可以轻轻反问，但不阴阳怪气
-- 不跪舔、不说教、不撒鸡汤，不用「宝贝」「亲爱的」这类腻词
-- 不用括号写动作或心理活动，最多 1 个 emoji
-- 例：「行，那你先忙，我不打扰了。」
-
-B 组 · 军师接话（3 条）
-- 2 到 3 句，总长 40 到 80 字
-- 结构：先接住对方这句话背后的情绪（一句）→ 给一个具体的小动作或提议 → 留一个话口让对方好接
-- 真诚、具体、不套路；不评价对方人品，不把对方心思猜得太满
-
-共同要求：
-1. 每条都能直接发出去，不要出现「你可以说」「建议回复」这类说明
-2. 6 条的开头不要重复，角度要不一样
-3. 不要提 AI、模型、分析过程
-4. 只输出 JSON，不要 markdown 代码块，不要任何解释：
-{"replies":[{"group":"A","tag":"短句","text":"..."},{"group":"A","tag":"自嘲","text":"..."},{"group":"A","tag":"反问","text":"..."},{"group":"B","tag":"共情","text":"..."},{"group":"B","tag":"接话","text":"..."},{"group":"B","tag":"推进","text":"..."}]}"""
-
-    suspend fun generate(context: Context, message: String): List<Reply> =
+    suspend fun generate(context: Context, parsed: ParsedContext): List<Reply> =
         withContext(Dispatchers.IO) {
+            if (parsed.target.isBlank()) throw IOException("没读到有效内容")
+
             val url = Prefs.apiUrl(context)
             val key = Prefs.apiKey(context)
             val model = Prefs.model(context)
             val persona = Prefs.persona(context)
+            val pack = ContentStore.current(context)
 
             if (key.isBlank()) throw IOException("还没填 API Key，点右上角「设置」")
             if (url.isBlank()) throw IOException("还没填接口地址")
 
-            val user = buildString {
-                append("对方发来的消息：「")
-                append(message.take(300))
-                append("」")
-                if (persona.isNotBlank()) {
-                    append("\n\n背景（只用来判断关系，不要写进回复）：\n")
-                    append(persona.take(300))
-                }
-            }
+            val cases = pickCases(pack, parsed.target + "\n" + parsed.history.joinToString("\n"))
+
+            val system = buildSystem(pack, cases)
+            val user = buildUser(parsed, persona)
 
             val body = JSONObject().apply {
                 put("model", model)
-                put("temperature", 0.9)
-                put("max_tokens", 900)
+                put("temperature", 1.0)
+                put("max_tokens", 700)
                 put(
                     "messages",
                     JSONArray().apply {
-                        put(JSONObject().put("role", "system").put("content", SYSTEM))
+                        put(JSONObject().put("role", "system").put("content", system))
                         put(JSONObject().put("role", "user").put("content", user))
                     }
                 )
             }
 
-            parseReplies(post(url, key, body.toString()))
+            parseReplies(post(url, key, body.toString()), pack)
         }
 
-    /**
-     * 设置页的「测试连接」：发一个最小请求，只关心能不能通。
-     */
+    /** 设置页的「测试连接」：最小请求，只关心通不通 */
     suspend fun test(context: Context): String = withContext(Dispatchers.IO) {
         val url = Prefs.apiUrl(context)
         val key = Prefs.apiKey(context)
@@ -90,15 +96,66 @@ B 组 · 军师接话（3 条）
         val body = JSONObject().apply {
             put("model", model)
             put("max_tokens", 8)
-            put(
-                "messages",
-                JSONArray().apply {
-                    put(JSONObject().put("role", "user").put("content", "ping"))
-                }
-            )
+            put("messages", JSONArray().apply {
+                put(JSONObject().put("role", "user").put("content", "ping"))
+            })
         }
         val raw = post(url, key, body.toString())
-        "连接正常 ✓\n模型 $model 已响应（返回 ${raw.length} 字节）"
+        "连接正常 ✓\n模型 $model 已响应（${raw.length} 字节）"
+    }
+
+    private fun pickCases(pack: ContentPack, text: String): List<ContentCase> =
+        pack.cases
+            .map { c -> c to c.keywords.count { it.isNotBlank() && text.contains(it, ignoreCase = true) } }
+            .filter { it.second > 0 }
+            .sortedByDescending { it.second }
+            .take(2)
+            .map { it.first }
+
+    private fun buildSystem(pack: ContentPack, cases: List<ContentCase>): String = buildString {
+        appendLine(pack.prompt.attitude)
+        appendLine()
+        appendLine(pack.prompt.judge)
+        appendLine()
+        appendLine(pack.prompt.voice)
+
+        if (pack.prompt.banned.isNotEmpty()) {
+            appendLine()
+            appendLine("这些词一个都不要出现：" + pack.prompt.banned.joinToString("、"))
+        }
+
+        appendLine()
+        appendLine("下面是真人发出去的话，用来校准语感。学它们的长度、具体度和「不解释」的劲头，不要照抄内容：")
+        pack.anchors.forEach { appendLine("· $it") }
+
+        if (cases.isNotEmpty()) {
+            appendLine()
+            appendLine("类似场景里真人怎么回（只参考思路，不要照抄句子）：")
+            cases.forEach { c ->
+                appendLine("· " + c.intent.ifBlank { c.id })
+                c.lines.take(4).forEach { appendLine("  - $it") }
+            }
+        }
+
+        appendLine()
+        appendLine("输出 ${pack.count} 条，level 依次是 ${pack.levels.joinToString(" / ")}。")
+        appendLine("每条 12-30 个字，最多 3 句，能直接发出去。")
+        appendLine("只输出 JSON，不要 markdown 代码块，不要任何解释：")
+        append("""{"replies":[{"level":"${pack.levels.firstOrNull() ?: "稳"}","text":"..."}]}""")
+    }
+
+    private fun buildUser(parsed: ParsedContext, persona: String): String = buildString {
+        if (parsed.history.isNotEmpty()) {
+            appendLine("最近几条：")
+            parsed.history.forEach { appendLine(it) }
+            appendLine()
+        }
+        appendLine("对方刚发来：「${parsed.target}」")
+        if (persona.isNotBlank()) {
+            appendLine()
+            appendLine("背景（只用来判断关系，不要写进回复）：")
+            appendLine(persona.take(300))
+        }
     }
 
     private fun post(url: String, key: String, body: String): String {
@@ -123,9 +180,6 @@ B 组 · 军师接话（3 条）
         }
     }
 
-    /**
-     * 服务端的原话对普通用户没有可操作性，这里翻译成能照着做的提示。
-     */
     private fun friendlyError(code: Int, body: String, host: String): String {
         val serverMsg = runCatching {
             JSONObject(body).getJSONObject("error").optString("message")
@@ -160,7 +214,7 @@ B 组 · 军师接话（3 条）
         }
     }
 
-    private fun parseReplies(raw: String): List<Reply> {
+    private fun parseReplies(raw: String, pack: ContentPack): List<Reply> {
         try {
             val content = JSONObject(raw)
                 .getJSONArray("choices")
@@ -178,15 +232,9 @@ B 组 · 军师接话（3 条）
                 val o = arr.optJSONObject(i) ?: continue
                 val text = o.optString("text").trim()
                 if (text.isEmpty()) continue
-                val isB = o.optString("group", "A").uppercase().startsWith("B")
-                val fallbackTag = if (isB) "军师" else "直球"
-                out.add(
-                    Reply(
-                        group = if (isB) "B" else "A",
-                        tag = o.optString("tag").trim().ifBlank { fallbackTag },
-                        text = text
-                    )
-                )
+                val level = o.optString("level").trim()
+                    .ifBlank { pack.levels.getOrElse(i) { "中" } }
+                out.add(Reply(level, text))
             }
             if (out.isEmpty()) throw IOException("没有解析出回复")
             return out

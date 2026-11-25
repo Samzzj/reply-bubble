@@ -55,22 +55,30 @@ class ReplyActivity : AppCompatActivity() {
     }
 
     private fun load(force: Boolean = false) {
-        val text = readClipboard()
-        if (text.isNullOrBlank()) {
-            showError("剪贴板是空的。\n\n先去聊天里长按对方那条消息 → 复制，再点悬浮球。")
+        val raw = readClipboard()
+        if (raw.isNullOrBlank()) {
+            showError("剪贴板是空的。\n\n先去聊天里长按对方那条消息 → 复制，再点悬浮球。\n也可以多选几条一起复制，我会读成上下文。")
             return
         }
 
-        if (!force && text == Prefs.lastCopied(this)) {
+        if (!force && raw == Prefs.lastCopied(this)) {
             showError(
                 "剪贴板里还是你上次复制的那条回复。\n\n" +
                     "先回聊天里复制对方的新消息，再点悬浮球；\n" +
-                    "想用同一句话再生成一批，点下面「换一批」。"
+                    "想用同一段再生成一批，点下面「换一批」。"
             )
             return
         }
 
-        binding.tvSource.text = "对方消息：" + text.replace("\n", " ").take(60)
+        val parsed = ContextParser.parse(raw)
+        if (parsed.target.isBlank()) {
+            showError("没从剪贴板里读到能用的内容，换一条试试。")
+            return
+        }
+
+        val contextHint = if (parsed.history.isEmpty()) "" else "（含 ${parsed.history.size} 条上文）"
+        binding.tvSource.text = "内容包 ${ContentStore.current(this).version} · 对方：$contextHint" +
+            parsed.target.replace("\n", " ").take(40)
         binding.tvSource.visibility = View.VISIBLE
         binding.errorScroll.visibility = View.GONE
         binding.list.visibility = View.GONE
@@ -81,7 +89,7 @@ class ReplyActivity : AppCompatActivity() {
         val gen = ++generation
         job = lifecycleScope.launch {
             try {
-                val replies = ReplyEngine.generate(this@ReplyActivity, text)
+                val replies = ReplyEngine.generate(this@ReplyActivity, parsed)
                 if (gen != generation) return@launch
                 adapter.submit(replies)
                 binding.list.visibility = View.VISIBLE

@@ -24,10 +24,15 @@ class ReplyAdapter(
 
     override fun onBindViewHolder(holder: Holder, position: Int) {
         val item = items[position]
-        val prefix = if (item.group == "B") "🧠 军师" else "💬 直球"
-        holder.b.tvTag.text = "$prefix · ${item.tag}"
+        holder.b.tvTag.text = levelLabel(item.level)
         holder.b.tvText.text = item.text
         holder.b.root.setOnClickListener { onClick(item) }
+    }
+
+    private fun levelLabel(level: String): String = when (level) {
+        "稳" -> "稳 · 不推进"
+        "进" -> "进 · 主动一点"
+        else -> "中 · 接住"
     }
 
     class Holder(val b: ItemReplyBinding) : RecyclerView.ViewHolder(b.root)

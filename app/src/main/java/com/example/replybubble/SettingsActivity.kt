@@ -21,6 +21,8 @@ class SettingsActivity : AppCompatActivity() {
         binding.etModel.setText(Prefs.model(this))
         binding.etKey.setText(Prefs.apiKey(this))
         binding.etPersona.setText(Prefs.persona(this))
+        binding.etContentUrl.setText(ContentStore.contentUrl(this))
+        binding.tvContentVersion.text = "当前内容包：" + ContentStore.versionLabel(this)
 
         binding.btnSave.setOnClickListener {
             val key = readAndCheckKey() ?: return@setOnClickListener
@@ -42,6 +44,20 @@ class SettingsActivity : AppCompatActivity() {
                     e.message ?: "测试失败"
                 }
                 binding.btnTest.isEnabled = true
+            }
+        }
+
+        binding.btnUpdateContent.setOnClickListener {
+            val url = binding.etContentUrl.text.toString().trim()
+            binding.btnUpdateContent.isEnabled = false
+            binding.tvContentVersion.text = "正在下载…"
+            lifecycleScope.launch {
+                binding.tvContentVersion.text = try {
+                    ContentStore.update(this@SettingsActivity, url)
+                } catch (e: Exception) {
+                    "更新失败：" + (e.message ?: "未知错误")
+                }
+                binding.btnUpdateContent.isEnabled = true
             }
         }
     }
