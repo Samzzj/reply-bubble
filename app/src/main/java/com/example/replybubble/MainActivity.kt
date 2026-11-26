@@ -29,6 +29,7 @@ class MainActivity : AppCompatActivity() {
         setupImmersiveStatusBar()
 
         binding.btnStart.setOnClickListener { startBubble() }
+        binding.btnAccessibility.setOnClickListener { openAccessibilitySettings() }
         binding.btnStop.setOnClickListener {
             stopService(Intent(this, BubbleService::class.java))
             updateStatus()
@@ -91,12 +92,29 @@ class MainActivity : AppCompatActivity() {
         updateStatus()
     }
 
+    private fun openAccessibilitySettings() {
+        Toast.makeText(this, "请在无障碍设置中找到「回复球」并开启", Toast.LENGTH_LONG).show()
+        runCatching {
+            startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+        }.onFailure {
+            Toast.makeText(this, "无法打开无障碍设置，请到系统设置中手动开启", Toast.LENGTH_LONG).show()
+        }
+    }
+
     private fun updateStatus() {
         val overlayOk = Settings.canDrawOverlays(this)
         applyBadge(binding.tvPermBadge, if (overlayOk) "已授权" else "未授权", overlayOk)
 
         val running = BubbleService.running
         applyBadge(binding.tvServiceBadge, if (running) "运行中" else "未运行", running)
+
+        val accOk = ReplyAccessibilityService.isEnabledInSettings(this)
+        applyBadge(binding.tvAccessibilityBadge, if (accOk) "已开启" else "未开启", accOk)
+        binding.btnAccessibility.text = if (accOk) {
+            "无障碍服务已开启（点此管理）"
+        } else {
+            "开启无障碍（自动读屏 & 直接填入）"
+        }
     }
 
     private fun applyBadge(tv: TextView, text: String, on: Boolean) {

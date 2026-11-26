@@ -29,7 +29,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="6dp"
-            android:text="复制对方消息 → 点悬浮球 → 选一条回复"
+            android:text="点悬浮球自动读屏 → 选一条回复 → 直接填入输入框"
             android:textColor="@color/ios_secondary"
             android:textSize="14sp" />
 
@@ -106,6 +106,42 @@
                     android:textSize="13sp"
                     android:textStyle="bold" />
             </LinearLayout>
+
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="0.5dp"
+                android:layout_marginTop="14dp"
+                android:layout_marginBottom="14dp"
+                android:background="@color/ios_separator" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="无障碍服务"
+                    android:textColor="@color/ios_label"
+                    android:textSize="15sp" />
+
+                <TextView
+                    android:id="@+id/tvAccessibilityBadge"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:background="@drawable/bg_badge_red"
+                    android:paddingStart="10dp"
+                    android:paddingTop="4dp"
+                    android:paddingEnd="10dp"
+                    android:paddingBottom="4dp"
+                    android:text="未开启"
+                    android:textColor="@color/ios_red"
+                    android:textSize="13sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
         </LinearLayout>
 
         <!-- 胶囊按钮组 -->
@@ -118,6 +154,18 @@
             android:gravity="center"
             android:text="开启悬浮球"
             android:textColor="#FFFFFF"
+            android:textSize="16sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/btnAccessibility"
+            android:layout_width="match_parent"
+            android:layout_height="52dp"
+            android:layout_marginTop="12dp"
+            android:background="@drawable/bg_capsule_soft_blue"
+            android:gravity="center"
+            android:text="开启无障碍（自动读屏 &amp; 直接填入）"
+            android:textColor="@color/ios_blue"
             android:textSize="16sp"
             android:textStyle="bold" />
 
@@ -176,7 +224,7 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="24dp"
             android:lineSpacingMultiplier="1.4"
-            android:text="说明：\n1. 需要「悬浮窗」权限；\n2. 面板会读取剪贴板里最新一条文本，把它当成对方发来的消息；\n3. 点卡片即复制，回聊天窗口长按粘贴即可；\n4. 小米/华为需允许「后台弹出界面」，否则点球没反应。"
+            android:text="说明：\n1. 开启「悬浮窗」和「无障碍服务」后，在聊天界面直接点悬浮球即可自动读取当前屏幕对话并生成回复；\n2. 点击任意一条回复，会自动填进聊天输入框，无需手动粘贴；\n3. 未开启无障碍时，自动退回剪贴板模式（复制消息 → 点球 → 点卡片复制）；\n4. 小米/华为需允许「后台弹出界面」；Android 13+ 若无障碍开关呈灰色，请到系统「应用信息 → 右上角菜单 → 允许受限设置」。"
             android:textColor="@color/ios_secondary"
             android:textSize="13sp" />
 

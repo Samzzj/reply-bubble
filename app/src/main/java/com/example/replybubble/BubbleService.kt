@@ -103,7 +103,7 @@ class BubbleService : Service() {
     private fun buildNotification() = NotificationCompat.Builder(this, CHANNEL_ID)
         .setSmallIcon(R.drawable.ic_notification)
         .setContentTitle("回复球运行中")
-        .setContentText("复制对方消息后，点悬浮球生成回复")
+        .setContentText("在聊天界面点悬浮球自动生成回复，点选即填入输入框")
         .setOngoing(true)
         .setSilent(true)
         .setPriority(NotificationCompat.PRIORITY_LOW)
@@ -223,10 +223,27 @@ class BubbleService : Service() {
 
     private fun openPanel() {
         try {
-            startActivity(
-                Intent(this, ReplyActivity::class.java)
-                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
-            )
+            val snapshot = ReplyAccessibilityService.instance?.captureCurrentScreen()
+            val intent = Intent(this, ReplyActivity::class.java)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                .apply {
+                    if (snapshot != null) {
+                        putExtra(ReplyActivity.EXTRA_FROM_SCREEN, true)
+                        putExtra(ReplyActivity.EXTRA_TARGET, snapshot.parsed.target)
+                        putStringArrayListExtra(
+                            ReplyActivity.EXTRA_HISTORY,
+                            ArrayList(snapshot.parsed.history)
+                        )
+                        putExtra(ReplyActivity.EXTRA_IS_SELF_LAST, snapshot.parsed.isSelfLast)
+                        putExtra(ReplyActivity.EXTRA_TARGET_PACKAGE, snapshot.packageName)
+                    } else {
+                        putExtra(
+                            ReplyActivity.EXTRA_TARGET_PACKAGE,
+                            ReplyAccessibilityService.lastExternalPackage.orEmpty()
+                        )
+                    }
+                }
+            startActivity(intent)
         } catch (e: Exception) {
             Toast.makeText(this, "打不开面板：${e.message}", Toast.LENGTH_LONG).show()
         }

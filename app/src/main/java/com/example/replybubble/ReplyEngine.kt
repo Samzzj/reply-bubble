@@ -16,7 +16,8 @@ data class Reply(
 
 data class ParsedContext(
     val target: String,
-    val history: List<String>
+    val history: List<String>,
+    val isSelfLast: Boolean = false
 )
 
 /**
@@ -150,7 +151,11 @@ object ReplyEngine {
             parsed.history.forEach { appendLine(it) }
             appendLine()
         }
-        appendLine("对方刚发来：「${parsed.target}」")
+        if (parsed.isSelfLast) {
+            appendLine("最近对话最后一条是我发的：「${parsed.target}」，结合上文帮我自然接话：")
+        } else {
+            appendLine("对方刚发来：「${parsed.target}」")
+        }
         if (persona.isNotBlank()) {
             appendLine()
             appendLine("背景（只用来判断关系，不要写进回复）：")

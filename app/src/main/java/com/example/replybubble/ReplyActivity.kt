@@ -21,20 +21,28 @@ class ReplyActivity : AppCompatActivity() {
 
     companion object {
         private const val BLUR_RADIUS = 60
+        const val EXTRA_FROM_SCREEN = "extra_from_screen"
+        const val EXTRA_TARGET = "extra_target"
+        const val EXTRA_HISTORY = "extra_history"
+        const val EXTRA_IS_SELF_LAST = "extra_is_self_last"
+        const val EXTRA_TARGET_PACKAGE = "extra_target_package"
     }
 
     private lateinit var binding: ActivityReplyBinding
-    private val adapter = ReplyAdapter { copyAndFinish(it.text) }
+    private val adapter = ReplyAdapter { selectReplyAndFinish(it.text) }
 
     private var loaded = false
     private var job: Job? = null
     private var generation = 0
+    private var screenParsed: ParsedContext? = null
+    private var targetPackage: String? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityReplyBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
+        parseIntentExtras(intent)
         setupWindow()
         playEntrance()
 
@@ -48,6 +56,26 @@ class ReplyActivity : AppCompatActivity() {
         binding.btnRetry.setOnClickListener {
             loaded = true
             load(force = true)
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        parseIntentExtras(intent)
+        loaded = false
+    }
+
+    private fun parseIntentExtras(intent: Intent?) {
+        targetPackage = intent?.getStringExtra(EXTRA_TARGET_PACKAGE)?.takeIf { it.isNotBlank() }
+        val fromScreen = intent?.getBooleanExtra(EXTRA_FROM_SCREEN, false) == true
+        val target = intent?.getStringExtra(EXTRA_TARGET).orEmpty().trim()
+        if (fromScreen && target.isNotEmpty()) {
+            val history = intent?.getStringArrayListExtra(EXTRA_HISTORY)?.toList().orEmpty()
+            val isSelfLast = intent?.getBooleanExtra(EXTRA_IS_SELF_LAST, false) == true
+            screenParsed = ParsedContext(target = target, history = history, isSelfLast = isSelfLast)
+        } else {
+            screenParsed = null
         }
     }
 
@@ -124,29 +152,40 @@ class ReplyActivity : AppCompatActivity() {
             return
         }
 
-        val raw = readClipboard()
-        if (raw.isNullOrBlank()) {
-            showError("剪贴板是空的。\n\n先去聊天里长按对方那条消息 → 复制，再点悬浮球。\n也可以多选几条一起复制，我会读成上下文。")
-            return
+        var sourceLabel = "屏幕"
+        val parsed = screenParsed ?: run {
+            sourceLabel = "剪贴板"
+            val raw = readClipboard()
+            if (raw.isNullOrBlank()) {
+                val tip = if (ReplyAccessibilityService.isRunning()) {
+                    "未从当前屏幕读到聊天内容，且剪贴板是空的。\n\n请在聊天界面再点一次悬浮球，或先复制对方消息。"
+                } else {
+                    "剪贴板是空的。\n\n建议在主页开启「无障碍服务」，点球即可自动读屏并直接填入输入框；\n也可以先去聊天里复制对方消息再点球。"
+                }
+                showError(tip)
+                return
+            }
+
+            if (!force && raw == Prefs.lastCopied(this)) {
+                showError(
+                    "剪贴板里还是你上次复制的那条回复。\n\n" +
+                        "先回聊天里复制对方的新消息，再点悬浮球；\n" +
+                        "想用同一段再生成一批，点下面「换一批」。"
+                )
+                return
+            }
+
+            ContextParser.parse(raw)
         }
 
-        if (!force && raw == Prefs.lastCopied(this)) {
-            showError(
-                "剪贴板里还是你上次复制的那条回复。\n\n" +
-                    "先回聊天里复制对方的新消息，再点悬浮球；\n" +
-                    "想用同一段再生成一批，点下面「换一批」。"
-            )
-            return
-        }
-
-        val parsed = ContextParser.parse(raw)
         if (parsed.target.isBlank()) {
-            showError("没从剪贴板里读到能用的内容，换一条试试。")
+            showError("没读到能用的聊天内容，换一条或回到聊天界面再试试。")
             return
         }
 
         val contextHint = if (parsed.history.isEmpty()) "" else " · ${parsed.history.size} 条上文"
-        binding.tvSubtitle.text = "内容包 ${pack.version} · 对方：${parsed.target.replace("\n", " ").take(18)}$contextHint"
+        val whoLabel = if (parsed.isSelfLast) "我" else "对方"
+        binding.tvSubtitle.text = "内容包 ${pack.version} · $sourceLabel · $whoLabel：${parsed.target.replace("\n", " ").take(16)}$contextHint"
 
         binding.emptyState.visibility = View.GONE
         binding.errorScroll.visibility = View.GONE
@@ -206,7 +245,17 @@ class ReplyActivity : AppCompatActivity() {
         null
     }
 
-    private fun copyAndFinish(text: String) {
+    private fun selectReplyAndFinish(text: String) {
+        val acc = ReplyAccessibilityService.instance
+        if (acc != null) {
+            val preferredPkg = targetPackage ?: ReplyAccessibilityService.lastExternalPackage
+            acc.insertReply(text, preferredPkg)
+            finish()
+            @Suppress("DEPRECATION")
+            overridePendingTransition(0, 0)
+            return
+        }
+
         try {
             val cm = getSystemService(ClipboardManager::class.java)
             cm.setPrimaryClip(ClipData.newPlainText("reply", text))
