@@ -304,6 +304,14 @@ class ReplyActivity : AppCompatActivity() {
     }
 
     private fun selectReplyAndFinish(text: String) {
+        // 先在 Activity 仍有焦点时写入剪贴板，避免 Android 10+ 后台服务无法写剪贴板
+        val copied = runCatching {
+            val cm = getSystemService(ClipboardManager::class.java)
+            cm.setPrimaryClip(ClipData.newPlainText("reply", text))
+            Prefs.setLastCopied(this, text)
+            true
+        }.getOrDefault(false)
+
         val acc = ReplyAccessibilityService.instance
         if (acc != null) {
             val preferredPkg = targetPackage ?: ReplyAccessibilityService.lastExternalPackage
@@ -314,13 +322,10 @@ class ReplyActivity : AppCompatActivity() {
             return
         }
 
-        try {
-            val cm = getSystemService(ClipboardManager::class.java)
-            cm.setPrimaryClip(ClipData.newPlainText("reply", text))
-            Prefs.setLastCopied(this, text)
+        if (copied) {
             Toast.makeText(this, "已复制，回聊天窗口长按粘贴", Toast.LENGTH_SHORT).show()
-        } catch (e: Exception) {
-            Toast.makeText(this, "复制失败：${e.message}", Toast.LENGTH_SHORT).show()
+        } else {
+            Toast.makeText(this, "复制失败", Toast.LENGTH_SHORT).show()
         }
         finish()
     }

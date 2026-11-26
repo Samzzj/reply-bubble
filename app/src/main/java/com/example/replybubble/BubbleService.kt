@@ -5,11 +5,15 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
+import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.graphics.PixelFormat
+import android.graphics.drawable.GradientDrawable
 import android.os.Build
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
 import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.MotionEvent
@@ -17,6 +21,7 @@ import android.view.View
 import android.view.ViewConfiguration
 import android.view.WindowManager
 import android.view.animation.DecelerateInterpolator
+import android.widget.TextView
 import android.widget.Toast
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
@@ -37,13 +42,30 @@ class BubbleService : Service() {
         @Volatile
         var running: Boolean = false
             private set
+
+        @Volatile
+        private var instance: BubbleService? = null
+
+        fun showTip(context: Context, message: String) {
+            val svc = instance
+            if (svc != null) {
+                Handler(Looper.getMainLooper()).post { svc.showOverlayTip(message) }
+            } else {
+                Handler(Looper.getMainLooper()).post {
+                    Toast.makeText(context.applicationContext, message, Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
     }
 
     private lateinit var wm: WindowManager
     private lateinit var params: WindowManager.LayoutParams
     private var bubble: View? = null
+    private var tipView: View? = null
     private var touchSlop = 0
     private var capturing = false
+
+    private val dismissTip = Runnable { removeTipView() }
 
     private val idleDim = Runnable {
         bubble?.animate()?.alpha(IDLE_ALPHA)?.setDuration(350L)?.start()
@@ -54,6 +76,7 @@ class BubbleService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        instance = this
         running = true
         wm = getSystemService(WindowManager::class.java)
         touchSlop = ViewConfiguration.get(this).scaledTouchSlop
@@ -69,6 +92,10 @@ class BubbleService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int = START_STICKY
 
     override fun onDestroy() {
+        if (instance === this) {
+            instance = null
+        }
+        removeTipView()
         bubble?.let {
             it.removeCallbacks(idleDim)
             try {
@@ -271,6 +298,46 @@ class BubbleService : Service() {
             bubble?.alpha = 1f
             Toast.makeText(this, "打不开面板：${e.message}", Toast.LENGTH_LONG).show()
         }
+    }
+
+    private fun showOverlayTip(message: String) {
+        removeTipView()
+        val d = resources.displayMetrics.density
+        val tv = TextView(this).apply {
+            text = message
+            setTextColor(0xFFFFFFFF.toInt())
+            textSize = 13.5f
+            setPadding((16 * d).toInt(), (10 * d).toInt(), (16 * d).toInt(), (10 * d).toInt())
+            background = GradientDrawable().apply {
+                setColor(0xDD1C1C1E.toInt())
+                cornerRadius = 20f * d
+            }
+        }
+        val lp = WindowManager.LayoutParams(
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE,
+            PixelFormat.TRANSLUCENT
+        ).apply {
+            gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
+            y = (96 * d).toInt()
+        }
+        runCatching {
+            wm.addView(tv, lp)
+            tipView = tv
+            tv.postDelayed(dismissTip, 2200L)
+        }.onFailure {
+            Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun removeTipView() {
+        tipView?.let {
+            it.removeCallbacks(dismissTip)
+            runCatching { wm.removeView(it) }
+        }
+        tipView = null
     }
 
     private fun launchReplyActivity(

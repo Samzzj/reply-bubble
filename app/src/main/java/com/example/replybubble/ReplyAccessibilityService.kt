@@ -232,6 +232,7 @@ class ReplyAccessibilityService : AccessibilityService() {
         insertJob = scope.launch {
             delay(180L)
             var sawAnyRoot = false
+            var clickedActivator = false
             repeat(15) {
                 val roots = collectTargetRoots(pkgHint)
                 if (roots.isNotEmpty()) sawAnyRoot = true
@@ -239,24 +240,67 @@ class ReplyAccessibilityService : AccessibilityService() {
                     runCatching { root.refresh() }
                     val input = findBestInputNode(root)
                     if (input != null && performInsert(input, text)) {
-                        Toast.makeText(this@ReplyAccessibilityService, "已填入输入框", Toast.LENGTH_SHORT).show()
+                        BubbleService.showTip(this@ReplyAccessibilityService, "已填入输入框")
                         return@launch
+                    }
+                }
+                if (!clickedActivator && roots.isNotEmpty()) {
+                    for (root in roots) {
+                        val activator = findInputActivatorNode(root)
+                        if (activator != null && clickNodeOrParent(activator)) {
+                            clickedActivator = true
+                            delay(260L)
+                            break
+                        }
                     }
                 }
                 delay(100L)
             }
             copyFallback(text)
             val tip = if (!sawAnyRoot) {
-                "系统限制读取该应用窗口，已复制到剪贴板"
+                "系统限制读取微信输入框，已复制到剪贴板"
             } else {
-                "未检测到文字输入框（若为语音条请切回键盘），已复制到剪贴板"
+                "未检测到输入框，已复制到剪贴板"
             }
-            Toast.makeText(
-                this@ReplyAccessibilityService,
-                tip,
-                Toast.LENGTH_SHORT
-            ).show()
+            BubbleService.showTip(this@ReplyAccessibilityService, tip)
         }
+    }
+
+    private fun findInputActivatorNode(root: AccessibilityNodeInfo): AccessibilityNodeInfo? {
+        val dm = resources.displayMetrics
+        val minTop = (dm.heightPixels * 0.72f).toInt()
+        val stack = ArrayDeque<Pair<AccessibilityNodeInfo, Int>>()
+        stack.add(root to 0)
+        while (stack.isNotEmpty()) {
+            val (node, depth) = stack.removeLast()
+            if (depth > 64) continue
+            if (node.isVisibleToUser) {
+                val txt = (node.text?.toString() ?: node.contentDescription?.toString()).orEmpty().trim()
+                if (txt.contains("可按住") || txt.contains("转文字") || txt == "发消息") {
+                    val r = Rect()
+                    node.getBoundsInScreen(r)
+                    if (r.height() > 0 && r.top >= minTop) {
+                        return node
+                    }
+                }
+            }
+            for (i in 0 until node.childCount) {
+                node.getChild(i)?.let { stack.add(it to depth + 1) }
+            }
+        }
+        return null
+    }
+
+    private fun clickNodeOrParent(node: AccessibilityNodeInfo): Boolean {
+        var cur: AccessibilityNodeInfo? = node
+        repeat(4) {
+            if (cur == null) return false
+            if (cur!!.isClickable && cur!!.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
+                return true
+            }
+            cur = cur!!.parent
+        }
+        return node.performAction(AccessibilityNodeInfo.ACTION_CLICK)
     }
 
     private suspend fun performInsert(node: AccessibilityNodeInfo, text: String): Boolean {
