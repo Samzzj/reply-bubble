@@ -78,9 +78,9 @@ object ReplyEngine {
 
             val body = JSONObject().apply {
                 put("model", model)
-                put("temperature", if (isAnthropic) 1.0 else 1.05)
+                put("temperature", if (isAnthropic) 1.0 else 1.15)
                 if (!isAnthropic) {
-                    put("presence_penalty", 0.15)
+                    put("presence_penalty", 0.25)
                 }
                 put("max_tokens", 950)
                 put(
@@ -173,22 +173,22 @@ object ReplyEngine {
         appendLine("【紧扣上下文硬规则】每一条回复都必须 100% 直接回应用户提供的【本次真实对话】里正在聊的事！严禁脱离上下文自说自话、严禁硬套上面示范句的无关情景。")
         appendLine("【视角与身份硬规则】你是「我」本人，正在微信上给「对方」发消息。每一条输出都必须是「我」发给「对方」的下一句话。")
         appendLine("严禁站在「对方」视角去回答、反问或吐槽「我」的话（即使最后一条是「我」刚发的问句、对方暂未回复，也只能替「我」继续对「对方」接话）。")
-        appendLine("【去 AI 味硬规则】像真人在微信上单手随手打字：短碎口语为主，可以用空格断句、句尾不加句号；严禁每条都写成工整对仗的「前半句，后半句」或三段式金句；严禁「你问我这个，是…」「这么关心我…，要不…」等 AI 模板，禁止生造「一验」「应个急」这种书面凑词。")
-        appendLine("5 条里前 2 条只要 4-12 字极简随口接（零端着、不用硬撩），中间 2 条带点生活气小调侃，最后 1 条最多轻递半步。")
+        appendLine("【痞坏拉扯硬规则】禁止像普通朋友、老实人或客服一样正经礼貌！每一条都要有让女生「又气又想笑、忍不住想回嘴」的钩子：")
+        appendLine("可以用故意曲解、轻度嘴贱反戳、欠揍反问、顺手敲诈她请客，或坏笑留半句；保持微信单手打字的散漫短句（多用空格断句、少用对仗和书面凑词），同时 100% 紧扣当前聊天内容！")
 
         val targetCount = maxOf(pack.count, 5)
         val levelHint = if (pack.levels.size >= targetCount) {
             pack.levels.take(targetCount).joinToString(" / ")
         } else {
-            "1 / 2 / 3 / 4 / 5（前两条极简随口，后面渐进）"
+            "1 / 2 / 3 / 4 / 5（从轻痞调侃 → 坏笑曲解 → 嘴贱反问 → 占理敲诈 → 大胆给台阶，条条有钩子）"
         }
 
         appendLine()
         appendLine("输出 $targetCount 条，level 依次是 $levelHint。")
-        appendLine("长度、标点、口语节奏按上面要求执行；超过 35 字一律太啰嗦。")
-        appendLine("${targetCount}条尽量拉开角度与长短，开头三个字不能重复。")
-        appendLine("先用一句大白话填 plan 判断双方温度和该怎么顺口接，再写出真人口语感十足的 replies。只输出 JSON，不要 markdown 代码块，不要任何解释：")
-        append("""{"plan":"双方关系温度与自然切入思路","replies":[{"level":"1","text":"..."}]}""")
+        appendLine("短促有劲，5-25字最佳，超过 35 字一律太啰嗦。")
+        appendLine("${targetCount}条尽量拉开角度，开头三个字不能重复。")
+        appendLine("先用一句大白话填 plan 判断她这句话的漏洞和怎么痞着接，再写出让女生想回嘴的 replies。只输出 JSON，不要 markdown 代码块，不要任何解释：")
+        append("""{"plan":"对方情绪与漏洞/怎么痞坏反打","replies":[{"level":"1","text":"..."}]}""")
     }
 
     private fun buildUser(
