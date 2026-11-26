@@ -165,21 +165,22 @@ object ReplyEngine {
         appendLine()
         appendLine("【视角与身份硬规则】你是「我」本人，正在微信上给「对方」发消息。每一条输出都必须是「我」发给「对方」的下一句话。")
         appendLine("严禁站在「对方」视角去回答、反问或吐槽「我」的话（即使最后一条是「我」刚发的问句或表情包、对方暂未回复，也只能替「我」继续对「对方」接话）。")
-        appendLine("沿用上文里两人真实的说话口癖、熟度与松弛感：如果平时是互损/开玩笑的熟人语境，回复必须像真人微信秒回一样带点坏笑和生活气，禁止突然端出礼貌客服腔或老实人总结。")
+        appendLine("【去 AI 味硬规则】像真人在微信上单手随手打字：短碎口语为主，可以用空格断句、句尾不加句号；严禁每条都写成工整对仗的「前半句，后半句」或三段式金句；严禁「你问我这个，是…」「这么关心我…，要不…」等 AI 模板，禁止生造「一验」「应个急」这种书面凑词。")
+        appendLine("5 条里前 2 条只要 4-12 字极简随口接（零端着、不用硬撩），中间 2 条带点生活气小调侃，最后 1 条最多轻递半步。")
 
         val targetCount = maxOf(pack.count, 5)
         val levelHint = if (pack.levels.size >= targetCount) {
             pack.levels.take(targetCount).joinToString(" / ")
         } else {
-            "1 / 2 / 3 / 4 / 5（由稳到皮，梯度递进）"
+            "1 / 2 / 3 / 4 / 5（前两条极简随口，后面渐进）"
         }
 
         appendLine()
         appendLine("输出 $targetCount 条，level 依次是 $levelHint。")
-        appendLine("长度、标点、句式按上面 voice 的要求执行；超过 45 字一律不合格（接情绪除外）。")
-        appendLine("${targetCount}条必须用不同招式和不同角度，开头三个字不能重复，不能是同义改写。")
-        appendLine("先用一句短话填 plan 选好切入点和不同招式，再写出真正好笑自然的 replies。只输出 JSON，不要 markdown 代码块，不要任何解释：")
-        append("""{"plan":"语境温度/抓具体词/各条用哪招","replies":[{"level":"1","text":"..."}]}""")
+        appendLine("长度、标点、口语节奏按上面要求执行；超过 35 字一律太啰嗦。")
+        appendLine("${targetCount}条尽量拉开角度与长短，开头三个字不能重复。")
+        appendLine("先用一句大白话填 plan 判断双方温度和该怎么顺口接，再写出真人口语感十足的 replies。只输出 JSON，不要 markdown 代码块，不要任何解释：")
+        append("""{"plan":"双方关系温度与自然切入思路","replies":[{"level":"1","text":"..."}]}""")
     }
 
     private fun buildUser(
