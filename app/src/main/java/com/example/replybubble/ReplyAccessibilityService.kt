@@ -233,9 +233,16 @@ class ReplyAccessibilityService : AccessibilityService() {
             delay(180L)
             var sawAnyRoot = false
             var clickedActivator = false
+            var lastRootInfo = ""
             repeat(15) {
                 val roots = collectTargetRoots(pkgHint)
-                if (roots.isNotEmpty()) sawAnyRoot = true
+                if (roots.isNotEmpty()) {
+                    sawAnyRoot = true
+                    lastRootInfo = roots.joinToString(",") { r ->
+                        val pkg = r.packageName?.toString().orEmpty().substringAfterLast('.')
+                        "$pkg:${countNodes(r)}"
+                    }
+                }
                 for (root in roots) {
                     runCatching { root.refresh() }
                     val input = findBestInputNode(root)
@@ -260,10 +267,25 @@ class ReplyAccessibilityService : AccessibilityService() {
             val tip = if (!sawAnyRoot) {
                 "系统限制读取微信输入框，已复制到剪贴板"
             } else {
-                "未检测到输入框，已复制到剪贴板"
+                "未检测到输入框($lastRootInfo)，已复制到剪贴板"
             }
             BubbleService.showTip(this@ReplyAccessibilityService, tip)
         }
+    }
+
+    private fun countNodes(root: AccessibilityNodeInfo): Int {
+        var count = 0
+        val stack = ArrayDeque<Pair<AccessibilityNodeInfo, Int>>()
+        stack.add(root to 0)
+        while (stack.isNotEmpty() && count < 200) {
+            val (node, depth) = stack.removeLast()
+            if (depth > 48) continue
+            count++
+            for (i in 0 until node.childCount) {
+                node.getChild(i)?.let { stack.add(it to depth + 1) }
+            }
+        }
+        return count
     }
 
     private fun findInputActivatorNode(root: AccessibilityNodeInfo): AccessibilityNodeInfo? {
@@ -271,16 +293,32 @@ class ReplyAccessibilityService : AccessibilityService() {
         val minTop = (dm.heightPixels * 0.72f).toInt()
         val stack = ArrayDeque<Pair<AccessibilityNodeInfo, Int>>()
         stack.add(root to 0)
+        var centerBoxFallback: AccessibilityNodeInfo? = null
         while (stack.isNotEmpty()) {
             val (node, depth) = stack.removeLast()
             if (depth > 64) continue
             if (node.isVisibleToUser) {
-                val txt = (node.text?.toString() ?: node.contentDescription?.toString()).orEmpty().trim()
-                if (txt.contains("可按住") || txt.contains("转文字") || txt == "发消息") {
-                    val r = Rect()
-                    node.getBoundsInScreen(r)
-                    if (r.height() > 0 && r.top >= minTop) {
+                val txt = sequenceOf(node.text, node.hintText, node.contentDescription)
+                    .mapNotNull { it?.toString()?.trim()?.takeIf { s -> s.isNotEmpty() } }
+                    .firstOrNull()
+                    .orEmpty()
+                val r = Rect()
+                node.getBoundsInScreen(r)
+                if (r.height() > 0 && r.top >= minTop) {
+                    if (txt.contains("可按住") || txt.contains("转文字") || txt == "发消息") {
                         return node
+                    }
+                    // 兜底识别微信底部中间横条输入控件（非全宽列表项，非左右小图标）
+                    val pkg = node.packageName?.toString().orEmpty()
+                    val d = dm.density
+                    if (centerBoxFallback == null &&
+                        pkg == "com.tencent.mm" &&
+                        r.top >= (dm.heightPixels * 0.85f).toInt() &&
+                        r.height() in (28 * d).toInt()..(76 * d).toInt() &&
+                        r.width() in (dm.widthPixels * 0.35f).toInt()..(dm.widthPixels * 0.80f).toInt() &&
+                        r.centerX() in (dm.widthPixels * 0.25f).toInt()..(dm.widthPixels * 0.75f).toInt()
+                    ) {
+                        centerBoxFallback = node
                     }
                 }
             }
@@ -288,7 +326,7 @@ class ReplyAccessibilityService : AccessibilityService() {
                 node.getChild(i)?.let { stack.add(it to depth + 1) }
             }
         }
-        return null
+        return centerBoxFallback
     }
 
     private fun clickNodeOrParent(node: AccessibilityNodeInfo): Boolean {
