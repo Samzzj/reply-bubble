@@ -78,7 +78,7 @@ object ReplyEngine {
 
             val body = JSONObject().apply {
                 put("model", model)
-                put("temperature", if (isAnthropic) 1.0 else 1.3)
+                put("temperature", if (isAnthropic) 1.0 else 1.2)
                 if (!isAnthropic) {
                     put("presence_penalty", 0.3)
                 }
@@ -171,8 +171,8 @@ object ReplyEngine {
         appendLine("输出 ${pack.count} 条，level 依次是 ${pack.levels.joinToString(" / ")}。")
         appendLine("长度、标点、句式按上面 voice 的要求执行；超过 45 字一律不合格（接情绪除外）。")
         appendLine("三条必须用三个不同招式，开头三个字不能重复，不能是同义改写。")
-        appendLine("先填 plan 选好切入点和三档招式，再写出真正好笑自然的 replies。只输出 JSON，不要 markdown 代码块，不要任何解释：")
-        append("""{"plan":{"tone":"双方语境与温度","hook":"抓原话具体词","moves":["稳用哪招","中用哪招","进用哪招"]},"replies":[{"level":"${pack.levels.firstOrNull() ?: "稳"}","text":"..."}]}""")
+        appendLine("先用一句短话填 plan 选好切入点和三档招式，再写出真正好笑自然的 replies。只输出 JSON，不要 markdown 代码块，不要任何解释：")
+        append("""{"plan":"语境温度/抓具体词/稳中进各用哪招","replies":[{"level":"${pack.levels.firstOrNull() ?: "稳"}","text":"..."}]}""")
     }
 
     private fun buildUser(
@@ -283,11 +283,7 @@ object ReplyEngine {
                 .getJSONObject("message")
                 .getString("content")
 
-            val start = content.indexOf('{')
-            val end = content.lastIndexOf('}')
-            val json = if (start >= 0 && end > start) content.substring(start, end + 1) else content
-
-            val arr = JSONObject(json).getJSONArray("replies")
+            val arr = extractRepliesArray(content)
             val out = ArrayList<Reply>(arr.length())
             for (i in 0 until arr.length()) {
                 val o = arr.optJSONObject(i) ?: continue
@@ -304,5 +300,48 @@ object ReplyEngine {
         } catch (e: Exception) {
             throw IOException("返回格式不对：${e.message}")
         }
+    }
+
+    /** 容错提取 replies 数组：即使前置 plan 字段里出现逗号或引号笔误，也不影响解析 replies */
+    private fun extractRepliesArray(content: String): JSONArray {
+        val start = content.indexOf('{')
+        val end = content.lastIndexOf('}')
+        val json = if (start >= 0 && end > start) content.substring(start, end + 1) else content
+        runCatching { JSONObject(json).optJSONArray("replies") }.getOrNull()?.let { return it }
+
+        val match = Regex(""""replies"\s*:\s*\[""").find(content)
+            ?: throw IllegalArgumentException("未找到 replies 数组")
+        val arrStart = content.indexOf('[', match.range.first)
+        var depth = 0
+        var inString = false
+        var escaped = false
+        var arrEnd = -1
+        for (i in arrStart until content.length) {
+            val ch = content[i]
+            if (escaped) {
+                escaped = false
+                continue
+            }
+            if (inString) {
+                if (ch == '\\') escaped = true
+                else if (ch == '"') inString = false
+                continue
+            }
+            when (ch) {
+                '"' -> inString = true
+                '[' -> depth++
+                ']' -> {
+                    depth--
+                    if (depth == 0) {
+                        arrEnd = i
+                        break
+                    }
+                }
+            }
+        }
+        if (arrEnd <= arrStart) throw IllegalArgumentException("replies 数组未闭合")
+        val cleaned = content.substring(arrStart, arrEnd + 1)
+            .replace(Regex(""",\s*([}\]])"""), "$1")
+        return JSONArray(cleaned)
     }
 }
