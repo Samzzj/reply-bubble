@@ -53,7 +53,11 @@ object ContextParser {
 
 object ReplyEngine {
 
-    suspend fun generate(context: Context, parsed: ParsedContext): List<Reply> =
+    suspend fun generate(
+        context: Context,
+        parsed: ParsedContext,
+        avoid: List<String> = emptyList()
+    ): List<Reply> =
         withContext(Dispatchers.IO) {
             if (parsed.target.isBlank()) throw IOException("没读到有效内容")
 
@@ -69,12 +73,16 @@ object ReplyEngine {
             val cases = pickCases(pack, parsed.target + "\n" + parsed.history.joinToString("\n"))
 
             val system = buildSystem(pack, cases)
-            val user = buildUser(parsed, persona)
+            val user = buildUser(parsed, persona, avoid)
+            val isAnthropic = url.contains("anthropic", ignoreCase = true)
 
             val body = JSONObject().apply {
                 put("model", model)
-                put("temperature", 1.0)
-                put("max_tokens", 700)
+                put("temperature", if (isAnthropic) 1.0 else 1.3)
+                if (!isAnthropic) {
+                    put("presence_penalty", 0.3)
+                }
+                put("max_tokens", 950)
                 put(
                     "messages",
                     JSONArray().apply {
@@ -157,16 +165,21 @@ object ReplyEngine {
         appendLine()
         appendLine("【视角与身份硬规则】你是「我」本人，正在微信上给「对方」发消息。每一条输出都必须是「我」发给「对方」的下一句话。")
         appendLine("严禁站在「对方」视角去回答、反问或吐槽「我」的话（即使最后一条是「我」刚发的问句或表情包、对方暂未回复，也只能替「我」继续对「对方」接话）。")
+        appendLine("沿用上文里两人真实的说话口癖、熟度与松弛感：如果平时是互损/开玩笑的熟人语境，回复必须像真人微信秒回一样带点坏笑和生活气，禁止突然端出礼貌客服腔或老实人总结。")
 
         appendLine()
         appendLine("输出 ${pack.count} 条，level 依次是 ${pack.levels.joinToString(" / ")}。")
         appendLine("长度、标点、句式按上面 voice 的要求执行；超过 45 字一律不合格（接情绪除外）。")
         appendLine("三条必须用三个不同招式，开头三个字不能重复，不能是同义改写。")
-        appendLine("只输出 JSON，不要 markdown 代码块，不要任何解释：")
-        append("""{"replies":[{"level":"${pack.levels.firstOrNull() ?: "稳"}","text":"..."}]}""")
+        appendLine("先填 plan 选好切入点和三档招式，再写出真正好笑自然的 replies。只输出 JSON，不要 markdown 代码块，不要任何解释：")
+        append("""{"plan":{"tone":"双方语境与温度","hook":"抓原话具体词","moves":["稳用哪招","中用哪招","进用哪招"]},"replies":[{"level":"${pack.levels.firstOrNull() ?: "稳"}","text":"..."}]}""")
     }
 
-    private fun buildUser(parsed: ParsedContext, persona: String): String = buildString {
+    private fun buildUser(
+        parsed: ParsedContext,
+        persona: String,
+        avoid: List<String> = emptyList()
+    ): String = buildString {
         if (parsed.history.isNotEmpty()) {
             appendLine("最近几条：")
             parsed.history.forEach { appendLine(it) }
@@ -198,6 +211,11 @@ object ReplyEngine {
             appendLine()
             appendLine("背景（只用来判断关系，不要写进回复）：")
             appendLine(persona.take(300))
+        }
+        if (avoid.isNotEmpty()) {
+            appendLine()
+            appendLine("以下几句刚才生成过但不用，换完全不同的切入点、招式和句式，不要重复：")
+            avoid.forEach { appendLine("- $it") }
         }
     }
 

@@ -42,6 +42,8 @@ class ReplyActivity : AppCompatActivity() {
     private var screenDiagnostic: String? = null
     private var fromBubble: Boolean = false
     private var accActive: Boolean = false
+    private var lastBatch: List<String> = emptyList()
+    private val rejectedReplies = ArrayList<String>()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -65,6 +67,12 @@ class ReplyActivity : AppCompatActivity() {
         }
         binding.btnRetry.setOnClickListener {
             loaded = true
+            if (lastBatch.isNotEmpty()) {
+                rejectedReplies.addAll(lastBatch)
+                while (rejectedReplies.size > 9) {
+                    rejectedReplies.removeAt(0)
+                }
+            }
             load(force = true, allowClipboardFallback = screenParsed == null && !(fromBubble && accActive))
         }
     }
@@ -73,6 +81,8 @@ class ReplyActivity : AppCompatActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         parseIntentExtras(intent)
+        lastBatch = emptyList()
+        rejectedReplies.clear()
         loaded = false
     }
 
@@ -239,8 +249,13 @@ class ReplyActivity : AppCompatActivity() {
         val gen = ++generation
         job = lifecycleScope.launch {
             try {
-                val replies = ReplyEngine.generate(this@ReplyActivity, parsed)
+                val replies = ReplyEngine.generate(
+                    this@ReplyActivity,
+                    parsed,
+                    avoid = rejectedReplies.toList()
+                )
                 if (gen != generation) return@launch
+                lastBatch = replies.map { it.text }
                 adapter.submit(replies)
                 binding.list.visibility = View.VISIBLE
             } catch (e: CancellationException) {
