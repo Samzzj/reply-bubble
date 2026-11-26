@@ -252,9 +252,11 @@ object ScreenContextExtractor {
                     val centerX = (node.rect.centerX() - winRect.left).toFloat()
 
                     val isLeft = (leftMargin < winW * 0.205f && centerX < winW * 0.48f) ||
-                        (leftMargin < winW * 0.20f && rightMargin > winW * 0.16f && leftMargin + dp(20) < rightMargin)
+                        (leftMargin < winW * 0.20f && rightMargin > winW * 0.16f && leftMargin + dp(20) < rightMargin) ||
+                        (rightMargin > winW * 0.48f && leftMargin < winW * 0.42f)
                     val isRight = (rightMargin < winW * 0.25f && centerX > winW * 0.52f) ||
-                        (rightMargin < winW * 0.22f && leftMargin > winW * 0.16f && rightMargin + dp(20) < leftMargin)
+                        (rightMargin < winW * 0.22f && leftMargin > winW * 0.16f && rightMargin + dp(20) < leftMargin) ||
+                        (leftMargin > winW * 0.48f && rightMargin < winW * 0.42f)
 
                     val centeredNotice = !isLeft && !isRight &&
                         abs(leftMargin - rightMargin) < winW * 0.14f &&

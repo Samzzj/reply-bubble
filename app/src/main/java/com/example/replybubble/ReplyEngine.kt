@@ -155,6 +155,10 @@ object ReplyEngine {
         }
 
         appendLine()
+        appendLine("【视角与身份硬规则】你是「我」本人，正在微信上给「对方」发消息。每一条输出都必须是「我」发给「对方」的下一句话。")
+        appendLine("严禁站在「对方」视角去回答、反问或吐槽「我」的话（即使最后一条是「我」刚发的问句或表情包、对方暂未回复，也只能替「我」继续对「对方」接话）。")
+
+        appendLine()
         appendLine("输出 ${pack.count} 条，level 依次是 ${pack.levels.joinToString(" / ")}。")
         appendLine("长度、标点、句式按上面 voice 的要求执行；超过 45 字一律不合格（接情绪除外）。")
         appendLine("三条必须用三个不同招式，开头三个字不能重复，不能是同义改写。")
@@ -169,9 +173,26 @@ object ReplyEngine {
             appendLine()
         }
         if (parsed.isSelfLast) {
-            appendLine("最近对话最后一条是我发的：「${parsed.target}」，结合上文帮我自然接话：")
+            val lastOther = parsed.history.lastOrNull { it.startsWith("对方：") }
+                ?.removePrefix("对方：")?.trim()
+            val trailingSelf = ArrayList<String>()
+            for (line in parsed.history.asReversed()) {
+                if (line.startsWith("我：")) trailingSelf.add(line.removePrefix("我：").trim())
+                else break
+            }
+            val selfTail = (trailingSelf.asReversed() + parsed.target)
+                .filter { it.isNotBlank() }
+                .joinToString(" ")
+            appendLine("【当前状态：最后是「我」发的，对方暂未回复】")
+            if (!lastOther.isNullOrBlank()) {
+                appendLine("对方上一句说的是：「$lastOther」")
+            }
+            appendLine("紧接着「我」发了：「$selfTail」（可能是文字或表情包内容），对方目前还没回复。")
+            appendLine("现在请严格站在「我」的立场，继续对「对方」自然接话（可顺着对方上一句继续聊，或顺着我发的内容/表情包自然带过或转场）；绝对禁止替「对方」回答我！")
         } else {
+            appendLine("【当前状态：对方刚发来消息】")
             appendLine("对方刚发来：「${parsed.target}」")
+            appendLine("请严格站在「我」的立场直接回复「对方」：")
         }
         if (persona.isNotBlank()) {
             appendLine()
