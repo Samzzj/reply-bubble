@@ -163,7 +163,7 @@ class ReplyAccessibilityService : AccessibilityService() {
                             return
                         }
 
-                        ScreenOcrHelper.recognize(softBitmap) { blocks, err ->
+                        ScreenOcrHelper.recognize(softBitmap, dm.density) { blocks, err ->
                             if (err != null) {
                                 onDone(null, "OCR失败：$err")
                                 return@recognize

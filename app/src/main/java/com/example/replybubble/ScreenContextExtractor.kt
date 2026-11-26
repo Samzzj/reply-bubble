@@ -33,17 +33,19 @@ object ScreenContextExtractor {
     private data class CapturedNode(
         val text: String,
         val rect: Rect,
-        val fromDesc: Boolean = false
+        val fromDesc: Boolean = false,
+        val sideHint: Int = 0 // 0=自动, 1=对方, 2=我
     )
 
     private val TIME_ONLY = Regex(
-        """^(\d{1,2}:\d{2}|(昨天|前天|今天|星期[一二三四五六日天]|周[一二三四五六日天]|上午|下午|晚上|凌晨)\s*\d{0,2}:?\d{0,2}|刚刚|\d+分钟前|\d+小时前|\d{4}[-/年]\d{1,2}[-/月]\d{1,2}日?(\s+\d{1,2}:\d{2})?)$"""
+        """^(\d{1,2}:\d{2}|(昨天|前天|今天|星期[一二三四五六日天]|周[一二三四五六日天]|上午|下午|晚上|凌晨)(\s*(上午|下午|晚上|凌晨)?\s*\d{1,2}:\d{2})?|刚刚|\d+分钟前|\d+小时前|(\d{4}[-/年])?\d{1,2}[-/月]\d{1,2}日?(\s*(上午|下午|晚上|凌晨)?\s*\d{1,2}:\d{2})?)$"""
     )
 
     private val PURE_DIGITS = Regex("""^\d{1,4}\+?$""")
 
     private val NOISE_EXACT = setOf(
-        "发送", "按住 说话", "按住说话", "松开发送", "语音", "表情", "更多功能按钮",
+        "发送", "按住 说话", "按住说话", "松开发送", "可按住 转文字", "可按住转文字",
+        "松开 结束", "松开结束", "语音", "表情", "更多功能按钮",
         "对方正在输入...", "对方正在输入", "正在输入...", "点击加载更多",
         "已读", "未读", "已发送", "撤回了一条消息", "以上是打招呼的内容",
         "微信", "通讯录", "发现", "我", "消息", "联系人", "动态", "返回",
@@ -119,7 +121,7 @@ object ScreenContextExtractor {
     }
 
     fun extractFromOcrBlocks(
-        blocks: List<Pair<String, Rect>>,
+        blocks: List<OcrBlock>,
         packageName: String,
         screenWidth: Int,
         screenHeight: Int,
@@ -130,23 +132,31 @@ object ScreenContextExtractor {
         fun dp(v: Int): Int = (v * density).toInt()
 
         val topCut = maxOf(dp(96), (screenHeight * 0.115f).toInt())
-        val baseBottom = screenHeight - dp(84)
+        val baseBottom = screenHeight - minOf(dp(54), (screenHeight * 0.055f).toInt())
         val bottomCut = if (imeTop != null && imeTop > topCut) {
-            minOf(baseBottom, imeTop - dp(60))
+            minOf(baseBottom, imeTop - dp(52))
         } else {
             baseBottom
         }
 
         val captured = ArrayList<CapturedNode>(blocks.size)
-        for ((rawText, rect) in blocks) {
+        for (block in blocks) {
+            val rect = block.rect
             if (rect.bottom <= topCut || rect.centerY() >= bottomCut) continue
-            val cleaned = rawText.split('\n')
+            val cleaned = block.text.split('\n')
                 .map { it.trim() }
                 .filter { it.isNotEmpty() && !isNoise(it) }
-                .joinToString(" ")
+                .joinToString("")
                 .trim()
             if (cleaned.isNotEmpty()) {
-                captured.add(CapturedNode(cleaned, rect, fromDesc = false))
+                captured.add(
+                    CapturedNode(
+                        text = cleaned,
+                        rect = rect,
+                        fromDesc = false,
+                        sideHint = if (block.isMyBubble) 2 else 0
+                    )
+                )
             }
         }
 
@@ -162,16 +172,49 @@ object ScreenContextExtractor {
             )
         }
 
+        val mergedBubbles = mergeSameBubbleOcrBlocks(captured, ::dp)
         return processCapturedNodes(
-            nodes = captured,
+            nodes = mergedBubbles,
             pkg = packageName,
             winRect = winRect,
             editRect = null,
             dp = ::dp,
             totalNodes = blocks.size,
-            rawTextCount = captured.size,
+            rawTextCount = mergedBubbles.size,
             rawDescCount = 0
         )
+    }
+
+    /** 把同一气泡内被 OCR 拆成上下两块的文字合并成一条消息，避免末行短句被错判为对方 */
+    private fun mergeSameBubbleOcrBlocks(
+        nodes: List<CapturedNode>,
+        dp: (Int) -> Int
+    ): List<CapturedNode> {
+        if (nodes.size <= 1) return nodes
+        val sorted = nodes.sortedWith(compareBy<CapturedNode> { it.rect.top }.thenBy { it.rect.left })
+        val out = ArrayList<CapturedNode>(sorted.size)
+        for (curr in sorted) {
+            val prev = out.lastOrNull()
+            if (prev != null &&
+                prev.sideHint == curr.sideHint &&
+                abs(prev.rect.left - curr.rect.left) <= dp(16) &&
+                curr.rect.top - prev.rect.bottom in -dp(4)..dp(12)
+            ) {
+                val combinedRect = Rect(
+                    minOf(prev.rect.left, curr.rect.left),
+                    prev.rect.top,
+                    maxOf(prev.rect.right, curr.rect.right),
+                    maxOf(prev.rect.bottom, curr.rect.bottom)
+                )
+                out[out.lastIndex] = prev.copy(
+                    text = prev.text + curr.text,
+                    rect = combinedRect
+                )
+            } else {
+                out.add(curr)
+            }
+        }
+        return out
     }
 
     private fun processCapturedNodes(
@@ -200,24 +243,30 @@ object ScreenContextExtractor {
 
         val winW = winRect.width().toFloat()
         val tagged = singleRowMessages.map { node ->
-            val leftMargin = (node.rect.left - winRect.left).toFloat()
-            val rightMargin = (winRect.right - node.rect.right).toFloat()
-            val centerX = (node.rect.centerX() - winRect.left).toFloat()
+            when (node.sideHint) {
+                2 -> Triple("我：${node.text}", true, false)
+                1 -> Triple("对方：${node.text}", true, false)
+                else -> {
+                    val leftMargin = (node.rect.left - winRect.left).toFloat()
+                    val rightMargin = (winRect.right - node.rect.right).toFloat()
+                    val centerX = (node.rect.centerX() - winRect.left).toFloat()
 
-            val isLeft = (leftMargin < winW * 0.25f && centerX < winW * 0.48f) ||
-                (leftMargin < winW * 0.22f && rightMargin > winW * 0.16f && leftMargin + dp(20) < rightMargin)
-            val isRight = (rightMargin < winW * 0.25f && centerX > winW * 0.52f) ||
-                (rightMargin < winW * 0.22f && leftMargin > winW * 0.16f && rightMargin + dp(20) < leftMargin)
+                    val isLeft = (leftMargin < winW * 0.205f && centerX < winW * 0.48f) ||
+                        (leftMargin < winW * 0.20f && rightMargin > winW * 0.16f && leftMargin + dp(20) < rightMargin)
+                    val isRight = (rightMargin < winW * 0.25f && centerX > winW * 0.52f) ||
+                        (rightMargin < winW * 0.22f && leftMargin > winW * 0.16f && rightMargin + dp(20) < leftMargin)
 
-            val centeredNotice = !isLeft && !isRight &&
-                abs(leftMargin - rightMargin) < winW * 0.14f &&
-                leftMargin > winW * 0.10f && rightMargin > winW * 0.10f &&
-                node.rect.height() <= dp(38) && node.text.length <= 36
+                    val centeredNotice = !isLeft && !isRight &&
+                        abs(leftMargin - rightMargin) < winW * 0.14f &&
+                        leftMargin > winW * 0.10f && rightMargin > winW * 0.10f &&
+                        node.rect.height() <= dp(38) && node.text.length <= 36
 
-            when {
-                isLeft && !isRight -> Triple("对方：${node.text}", true, false)
-                isRight && !isLeft -> Triple("我：${node.text}", true, false)
-                else -> Triple(node.text, false, centeredNotice)
+                    when {
+                        isLeft && !isRight -> Triple("对方：${node.text}", true, false)
+                        isRight && !isLeft -> Triple("我：${node.text}", true, false)
+                        else -> Triple(node.text, false, centeredNotice)
+                    }
+                }
             }
         }
 
