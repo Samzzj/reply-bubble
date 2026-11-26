@@ -20,7 +20,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:fontFamily="sans-serif-medium"
-            android:text="回复球"
+            android:text="AI回复"
             android:textColor="@color/ios_label"
             android:textSize="32sp"
             android:textStyle="bold" />

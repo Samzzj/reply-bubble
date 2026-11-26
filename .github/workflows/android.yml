@@ -71,5 +71,5 @@ jobs:
           VER="v0.2.${GITHUB_RUN_NUMBER}"
           cp app/build/outputs/apk/debug/app-debug.apk "reply-bubble-${VER}-debug.apk"
           gh release create "$VER" "reply-bubble-${VER}-debug.apk" \
-            --title "回复球 ${VER}" \
+            --title "AI回复 ${VER}" \
             --notes "iOS 风悬浮球 + 底部面板，字号加大。从这一版起使用固定签名，可直接覆盖安装。"

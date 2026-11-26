@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">回复球</string>
+    <string name="app_name">AI回复</string>
     <string name="settings_title">设置</string>
     <string name="accessibility_description">用于读取当前聊天屏幕消息以自动生成回复，并在点击回复后直接填入输入框，无需手动复制粘贴。</string>
 </resources>

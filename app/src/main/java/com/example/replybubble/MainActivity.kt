@@ -93,7 +93,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun openAccessibilitySettings() {
-        Toast.makeText(this, "请在无障碍设置中找到「回复球」并开启", Toast.LENGTH_LONG).show()
+        Toast.makeText(this, "请在无障碍设置中找到「AI回复」并开启", Toast.LENGTH_LONG).show()
         runCatching {
             startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
         }.onFailure {

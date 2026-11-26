@@ -130,7 +130,7 @@ class BubbleService : Service() {
 
     private fun buildNotification() = NotificationCompat.Builder(this, CHANNEL_ID)
         .setSmallIcon(R.drawable.ic_notification)
-        .setContentTitle("回复球运行中")
+        .setContentTitle("AI回复运行中")
         .setContentText("在聊天界面点悬浮球自动生成回复，点选即填入输入框")
         .setOngoing(true)
         .setSilent(true)

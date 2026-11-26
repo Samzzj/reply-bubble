@@ -188,7 +188,7 @@ class ReplyAccessibilityService : AccessibilityService() {
                     override fun onFailure(errorCode: Int) {
                         val msg = when (errorCode) {
                             ERROR_TAKE_SCREENSHOT_NO_ACCESSIBILITY_ACCESS ->
-                                "未授予截屏权限（请在系统无障碍设置中关闭再重开「回复球」）"
+                                "未授予截屏权限（请在系统无障碍设置中关闭再重开「AI回复」）"
                             ERROR_TAKE_SCREENSHOT_INTERVAL_TIME_SHORT ->
                                 "截屏过于频繁，请 1 秒后再试"
                             ERROR_TAKE_SCREENSHOT_SECURE_WINDOW ->
@@ -231,18 +231,9 @@ class ReplyAccessibilityService : AccessibilityService() {
         insertJob?.cancel()
         insertJob = scope.launch {
             delay(180L)
-            var sawAnyRoot = false
             var clickedActivator = false
-            var lastRootInfo = ""
             repeat(15) {
                 val roots = collectTargetRoots(pkgHint)
-                if (roots.isNotEmpty()) {
-                    sawAnyRoot = true
-                    lastRootInfo = roots.joinToString(",") { r ->
-                        val pkg = r.packageName?.toString().orEmpty().substringAfterLast('.')
-                        "$pkg:${countNodes(r)}"
-                    }
-                }
                 for (root in roots) {
                     runCatching { root.refresh() }
                     val input = findBestInputNode(root)
@@ -264,28 +255,7 @@ class ReplyAccessibilityService : AccessibilityService() {
                 delay(100L)
             }
             copyFallback(text)
-            val tip = if (!sawAnyRoot) {
-                "系统限制读取微信输入框，已复制到剪贴板"
-            } else {
-                "未检测到输入框($lastRootInfo)，已复制到剪贴板"
-            }
-            BubbleService.showTip(this@ReplyAccessibilityService, tip)
         }
-    }
-
-    private fun countNodes(root: AccessibilityNodeInfo): Int {
-        var count = 0
-        val stack = ArrayDeque<Pair<AccessibilityNodeInfo, Int>>()
-        stack.add(root to 0)
-        while (stack.isNotEmpty() && count < 200) {
-            val (node, depth) = stack.removeLast()
-            if (depth > 48) continue
-            count++
-            for (i in 0 until node.childCount) {
-                node.getChild(i)?.let { stack.add(it to depth + 1) }
-            }
-        }
-        return count
     }
 
     private fun findInputActivatorNode(root: AccessibilityNodeInfo): AccessibilityNodeInfo? {
