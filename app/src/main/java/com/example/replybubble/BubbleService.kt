@@ -43,6 +43,7 @@ class BubbleService : Service() {
     private lateinit var params: WindowManager.LayoutParams
     private var bubble: View? = null
     private var touchSlop = 0
+    private var capturing = false
 
     private val idleDim = Runnable {
         bubble?.animate()?.alpha(IDLE_ALPHA)?.setDuration(350L)?.start()
@@ -222,10 +223,62 @@ class BubbleService : Service() {
     }
 
     private fun openPanel() {
+        if (capturing) return
         try {
             val acc = ReplyAccessibilityService.instance
             val accActive = acc != null
             val snapshot = acc?.captureCurrentScreen()
+            if (snapshot != null || acc == null || Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
+                launchReplyActivity(
+                    accActive = accActive,
+                    snapshot = snapshot,
+                    diag = ReplyAccessibilityService.lastDiagnostic
+                )
+                return
+            }
+
+            // 无障碍节点树拿不到时（例如系统限制读取微信），走 Android 11+ 无障碍截屏 + 离线中文 OCR 兜底
+            val accDiag = ReplyAccessibilityService.lastDiagnostic.orEmpty()
+            capturing = true
+            val view = bubble
+            view?.removeCallbacks(idleDim)
+            view?.animate()?.cancel()
+            view?.alpha = 0f
+
+            val startOcr = Runnable {
+                acc.captureScreenByOcr { ocrSnap, ocrDiag ->
+                    capturing = false
+                    view?.alpha = 1f
+                    view?.postDelayed(idleDim, IDLE_DELAY)
+                    val combinedDiag = listOfNotNull(
+                        accDiag.takeIf { it.isNotBlank() },
+                        ocrDiag?.takeIf { it.isNotBlank() }
+                    ).joinToString(" | ")
+                    launchReplyActivity(
+                        accActive = true,
+                        snapshot = ocrSnap,
+                        diag = combinedDiag
+                    )
+                }
+            }
+            if (view != null) {
+                view.post(startOcr)
+            } else {
+                startOcr.run()
+            }
+        } catch (e: Exception) {
+            capturing = false
+            bubble?.alpha = 1f
+            Toast.makeText(this, "打不开面板：${e.message}", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    private fun launchReplyActivity(
+        accActive: Boolean,
+        snapshot: ScreenSnapshot?,
+        diag: String?
+    ) {
+        try {
             val intent = Intent(this, ReplyActivity::class.java)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
                 .apply {
@@ -247,7 +300,7 @@ class BubbleService : Service() {
                         )
                         putExtra(
                             ReplyActivity.EXTRA_CAPTURE_DIAG,
-                            ReplyAccessibilityService.lastDiagnostic.orEmpty()
+                            diag.orEmpty()
                         )
                     }
                 }

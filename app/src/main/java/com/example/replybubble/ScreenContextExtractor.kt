@@ -106,7 +106,85 @@ object ScreenContextExtractor {
         }
 
         val merged = mergeTextAndDesc(rawNodes)
-        val deduped = deduplicate(merged)
+        return processCapturedNodes(
+            nodes = merged,
+            pkg = pkg,
+            winRect = winRect,
+            editRect = editRect,
+            dp = ::dp,
+            totalNodes = totalNodes,
+            rawTextCount = rawTextCount,
+            rawDescCount = rawDescCount
+        )
+    }
+
+    fun extractFromOcrBlocks(
+        blocks: List<Pair<String, Rect>>,
+        packageName: String,
+        screenWidth: Int,
+        screenHeight: Int,
+        density: Float,
+        imeTop: Int?
+    ): ExtractResult {
+        val winRect = Rect(0, 0, screenWidth, screenHeight)
+        fun dp(v: Int): Int = (v * density).toInt()
+
+        val topCut = maxOf(dp(96), (screenHeight * 0.115f).toInt())
+        val baseBottom = screenHeight - dp(84)
+        val bottomCut = if (imeTop != null && imeTop > topCut) {
+            minOf(baseBottom, imeTop - dp(60))
+        } else {
+            baseBottom
+        }
+
+        val captured = ArrayList<CapturedNode>(blocks.size)
+        for ((rawText, rect) in blocks) {
+            if (rect.bottom <= topCut || rect.centerY() >= bottomCut) continue
+            val cleaned = rawText.split('\n')
+                .map { it.trim() }
+                .filter { it.isNotEmpty() && !isNoise(it) }
+                .joinToString(" ")
+                .trim()
+            if (cleaned.isNotEmpty()) {
+                captured.add(CapturedNode(cleaned, rect, fromDesc = false))
+            }
+        }
+
+        if (captured.isEmpty()) {
+            return ExtractResult(
+                null,
+                packageName,
+                blocks.size,
+                blocks.size,
+                0,
+                0,
+                "OCR共识别${blocks.size}块，聊天气泡区域为空"
+            )
+        }
+
+        return processCapturedNodes(
+            nodes = captured,
+            pkg = packageName,
+            winRect = winRect,
+            editRect = null,
+            dp = ::dp,
+            totalNodes = blocks.size,
+            rawTextCount = captured.size,
+            rawDescCount = 0
+        )
+    }
+
+    private fun processCapturedNodes(
+        nodes: List<CapturedNode>,
+        pkg: String,
+        winRect: Rect,
+        editRect: Rect?,
+        dp: (Int) -> Int,
+        totalNodes: Int,
+        rawTextCount: Int,
+        rawDescCount: Int
+    ): ExtractResult {
+        val deduped = deduplicate(nodes)
             .filter { !isNoise(it.text) }
             .sortedWith(compareBy<CapturedNode> { it.rect.top }.thenBy { it.rect.left })
 
@@ -115,7 +193,7 @@ object ScreenContextExtractor {
         }
 
         // 过滤同一水平行排布的控件（快捷回复条、引力签标签组、系统提示+链接行等）
-        val singleRowMessages = filterHorizontalUiRows(deduped, editRect, ::dp)
+        val singleRowMessages = filterHorizontalUiRows(deduped, editRect, dp)
         if (singleRowMessages.isEmpty()) {
             return ExtractResult(null, pkg, totalNodes, rawTextCount, rawDescCount, 0, "同行控件过滤后为空")
         }

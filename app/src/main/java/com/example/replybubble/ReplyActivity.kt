@@ -174,9 +174,7 @@ class ReplyActivity : AppCompatActivity() {
                 targetPackage = snap.packageName
             } else {
                 val retryDiag = ReplyAccessibilityService.lastDiagnostic
-                if (screenDiagnostic.isNullOrBlank() ||
-                    (!retryDiag.isNullOrBlank() && !retryDiag.startsWith("未获取到外部应用窗口"))
-                ) {
+                if (screenDiagnostic.isNullOrBlank() && !retryDiag.isNullOrBlank()) {
                     screenDiagnostic = retryDiag
                 }
             }

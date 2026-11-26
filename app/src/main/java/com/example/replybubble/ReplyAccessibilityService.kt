@@ -4,9 +4,12 @@ import android.accessibilityservice.AccessibilityService
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.graphics.Bitmap
 import android.graphics.Rect
+import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
+import android.view.Display
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import android.view.accessibility.AccessibilityWindowInfo
@@ -95,8 +98,8 @@ class ReplyAccessibilityService : AccessibilityService() {
         val candidates = collectTargetRoots(preferredPackage = lastExternalPackage)
         if (candidates.isEmpty()) {
             val activePkg = rootInActiveWindow?.packageName?.toString().orEmpty().ifBlank { "null" }
-            val winCount = windows?.size ?: 0
-            lastDiagnostic = "未获取到外部应用窗口（active=$activePkg, windows=$winCount）"
+            val winSummary = describeWindows()
+            lastDiagnostic = "无障碍未拿到外部窗口（active=$activePkg, last=$lastExternalPackage, $winSummary）"
             return null
         }
 
@@ -125,6 +128,98 @@ class ReplyAccessibilityService : AccessibilityService() {
             "窗口=${f.packageName} · 节点=${f.totalNodes} · 文本=${f.rawTextNodes}+${f.rawDescNodes}（${f.reason}）"
         }
         return null
+    }
+
+    /** Android 11+ 通过无障碍截屏 + 离线中文 OCR 提取屏幕聊天内容 */
+    fun captureScreenByOcr(onDone: (ScreenSnapshot?, String?) -> Unit) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
+            onDone(null, "OCR兜底需Android 11及以上")
+            return
+        }
+        val imeTop = findImeTop()
+        val dm = resources.displayMetrics
+        val pkgHint = lastExternalPackage?.takeIf { it.isNotBlank() } ?: "ocr.screen"
+        try {
+            takeScreenshot(
+                Display.DEFAULT_DISPLAY,
+                mainExecutor,
+                object : TakeScreenshotCallback {
+                    override fun onSuccess(screenshot: ScreenshotResult) {
+                        val hwBuffer = screenshot.hardwareBuffer
+                        var softBitmap: Bitmap? = null
+                        try {
+                            val hwBitmap = Bitmap.wrapHardwareBuffer(hwBuffer, screenshot.colorSpace)
+                            softBitmap = hwBitmap?.copy(Bitmap.Config.ARGB_8888, false)
+                            hwBitmap?.recycle()
+                        } catch (e: Exception) {
+                            onDone(null, "截屏转换失败：${e.message}")
+                            return
+                        } finally {
+                            hwBuffer.close()
+                        }
+
+                        if (softBitmap == null) {
+                            onDone(null, "截屏位图为空")
+                            return
+                        }
+
+                        ScreenOcrHelper.recognize(softBitmap) { blocks, err ->
+                            if (err != null) {
+                                onDone(null, "OCR失败：$err")
+                                return@recognize
+                            }
+                            val res = ScreenContextExtractor.extractFromOcrBlocks(
+                                blocks = blocks,
+                                packageName = pkgHint,
+                                screenWidth = dm.widthPixels,
+                                screenHeight = dm.heightPixels,
+                                density = dm.density,
+                                imeTop = imeTop
+                            )
+                            if (res.snapshot != null) {
+                                lastDiagnostic = "ok:ocr($pkgHint)"
+                                onDone(res.snapshot, null)
+                            } else {
+                                onDone(null, res.reason)
+                            }
+                        }
+                    }
+
+                    override fun onFailure(errorCode: Int) {
+                        val msg = when (errorCode) {
+                            ERROR_TAKE_SCREENSHOT_NO_ACCESSIBILITY_ACCESS ->
+                                "未授予截屏权限（请在系统无障碍设置中关闭再重开「回复球」）"
+                            ERROR_TAKE_SCREENSHOT_INTERVAL_TIME_SHORT ->
+                                "截屏过于频繁，请 1 秒后再试"
+                            ERROR_TAKE_SCREENSHOT_SECURE_WINDOW ->
+                                "当前页面禁止截屏(FLAG_SECURE)"
+                            else -> "截屏失败(code=$errorCode)"
+                        }
+                        onDone(null, msg)
+                    }
+                }
+            )
+        } catch (e: Exception) {
+            onDone(null, "截屏异常：${e.message}")
+        }
+    }
+
+    private fun findImeTop(): Int? {
+        val ime = windows.orEmpty().firstOrNull { it.type == AccessibilityWindowInfo.TYPE_INPUT_METHOD }
+            ?: return null
+        val r = Rect()
+        ime.getBoundsInScreen(r)
+        return if (r.height() > 0) r.top else null
+    }
+
+    private fun describeWindows(): String {
+        val list = windows.orEmpty()
+        if (list.isEmpty()) return "windows=0"
+        val items = list.joinToString(",") { w ->
+            val pkg = runCatching { w.root?.packageName?.toString() }.getOrNull()
+            "T${w.type}:${pkg ?: "nullRoot"}"
+        }
+        return "windows=${list.size}[$items]"
     }
 
     /**
@@ -208,12 +303,17 @@ class ReplyAccessibilityService : AccessibilityService() {
         }
 
         windows.orEmpty()
-            .filter { it.type == AccessibilityWindowInfo.TYPE_APPLICATION }
+            .filter {
+                it.type != AccessibilityWindowInfo.TYPE_INPUT_METHOD &&
+                    it.type != AccessibilityWindowInfo.TYPE_SPLIT_SCREEN_DIVIDER &&
+                    it.type != AccessibilityWindowInfo.TYPE_MAGNIFICATION_OVERLAY
+            }
             .mapNotNull { w -> w.root?.let { r -> Triple(w, r, r.packageName?.toString().orEmpty()) } }
             .sortedWith(
                 compareByDescending<Triple<AccessibilityWindowInfo, AccessibilityNodeInfo, String>> { (_, _, pkg) ->
                     !preferredPackage.isNullOrBlank() && pkg == preferredPackage
                 }
+                    .thenByDescending { (w, _, _) -> w.type == AccessibilityWindowInfo.TYPE_APPLICATION }
                     .thenByDescending { (w, _, _) -> w.isFocused }
                     .thenByDescending { (w, _, _) -> w.isActive }
                     .thenByDescending { (w, _, _) -> w.layer }
