@@ -11,8 +11,9 @@ android {
         applicationId = "com.example.replybubble"
         minSdk = 26
         targetSdk = 34
-        versionCode = 2
-        versionName = "0.2.0"
+        val ciRunNumber = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull()
+        versionCode = ciRunNumber ?: 2
+        versionName = if (ciRunNumber != null) "0.2.$ciRunNumber" else "0.2.0"
     }
 
     signingConfigs {
