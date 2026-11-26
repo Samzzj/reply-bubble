@@ -10,12 +10,12 @@ import com.google.mlkit.vision.text.chinese.ChineseTextRecognizerOptions
 data class OcrBlock(
     val text: String,
     val rect: Rect,
-    val isMyBubble: Boolean
+    val bubbleSide: Int // 0=非纯色气泡(如表情包/图片/背景), 1=对方白/灰气泡, 2=我方绿气泡
 )
 
 /**
  * 基于 ML Kit 离线中文 OCR 的屏幕文字提取兜底。
- * 当系统或目标应用（如微信）限制无障碍节点树读取时启用。
+ * 只保留微信实色文字气泡（绿气泡 / 白或深灰气泡），自动忽略表情包、图片内嵌文字。
  */
 object ScreenOcrHelper {
 
@@ -42,7 +42,7 @@ object ScreenOcrHelper {
                                 OcrBlock(
                                     text = text,
                                     rect = rect,
-                                    isMyBubble = isGreenWeChatBubble(bitmap, rect, density)
+                                    bubbleSide = classifyWeChatBubble(bitmap, rect, density)
                                 )
                             }
                         }
@@ -59,11 +59,11 @@ object ScreenOcrHelper {
             }
     }
 
-    /** 通过文字框周围气泡填充色判定是否为微信绿色气泡（即「我」发送的消息） */
-    private fun isGreenWeChatBubble(bitmap: Bitmap, rect: Rect, density: Float): Boolean {
+    /** 通过文字框周围气泡填充色区分「我方绿气泡(2)」「对方纯色气泡(1)」「表情包/图片杂色(0)」 */
+    private fun classifyWeChatBubble(bitmap: Bitmap, rect: Rect, density: Float): Int {
         val w = bitmap.width
         val h = bitmap.height
-        if (w <= 0 || h <= 0) return false
+        if (w <= 0 || h <= 0) return 0
 
         val pad = (3f * density).toInt().coerceAtLeast(2)
         val left = (rect.left - pad).coerceIn(0, w - 1)
@@ -87,15 +87,22 @@ object ScreenOcrHelper {
         )
 
         var greenHits = 0
+        var whiteHits = 0
+        var darkGrayHits = 0
         for ((x, y) in points) {
             val c = bitmap.getPixel(x, y)
             val r = Color.red(c)
             val g = Color.green(c)
             val b = Color.blue(c)
-            if (g >= 90 && g - r >= 18 && g - b >= 22) {
-                greenHits++
+            val spread = maxOf(r, g, b) - minOf(r, g, b)
+            when {
+                g >= 90 && g - r >= 18 && g - b >= 22 -> greenHits++
+                r >= 242 && g >= 242 && b >= 242 && spread <= 14 -> whiteHits++
+                r in 32..68 && g in 32..68 && b in 32..68 && spread <= 14 -> darkGrayHits++
             }
         }
-        return greenHits >= 3
+        if (greenHits >= 4) return 2
+        if (rect.left < w * 0.28f && (whiteHits >= 5 || darkGrayHits >= 5)) return 1
+        return 0
     }
 }

@@ -9,6 +9,7 @@ import android.view.View
 import android.view.WindowManager
 import android.view.animation.DecelerateInterpolator
 import android.widget.Toast
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -44,6 +45,8 @@ class ReplyActivity : AppCompatActivity() {
     private var accActive: Boolean = false
     private var lastBatch: List<String> = emptyList()
     private val rejectedReplies = ArrayList<String>()
+    private var lastShownParsed: ParsedContext? = null
+    private var lastSourceLabel: String = "屏幕"
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -59,6 +62,7 @@ class ReplyActivity : AppCompatActivity() {
 
         binding.btnClose.setOnClickListener { finish() }
         binding.scrim.setOnClickListener { finish() }
+        binding.tvSubtitle.setOnClickListener { showExtractedContextDialog() }
         binding.btnGotoSettings.setOnClickListener { openSettings() }
         binding.btnSettings.setOnClickListener { openSettings() }
         binding.btnUseClipboard.setOnClickListener {
@@ -148,6 +152,27 @@ class ReplyActivity : AppCompatActivity() {
         startActivity(Intent(this, SettingsActivity::class.java))
     }
 
+    private fun showExtractedContextDialog() {
+        val p = lastShownParsed ?: return
+        val whoLast = if (p.isSelfLast) "我" else "对方"
+        val detail = buildString {
+            appendLine("识别来源：$lastSourceLabel")
+            appendLine()
+            if (p.history.isNotEmpty()) {
+                appendLine("上文（${p.history.size}条）：")
+                p.history.forEach { appendLine(it) }
+                appendLine()
+            }
+            appendLine("最后一条（$whoLast）：")
+            append(p.target)
+        }
+        AlertDialog.Builder(this)
+            .setTitle("提取到的聊天内容")
+            .setMessage(detail)
+            .setPositiveButton("知道了", null)
+            .show()
+    }
+
     override fun onResume() {
         super.onResume()
         // 从设置页回来，如果之前是空状态，重新走一遍
@@ -235,9 +260,11 @@ class ReplyActivity : AppCompatActivity() {
             return
         }
 
-        val contextHint = if (parsed.history.isEmpty()) "" else " · ${parsed.history.size} 条上文"
+        lastShownParsed = parsed
+        lastSourceLabel = sourceLabel
+        val contextHint = if (parsed.history.isEmpty()) "" else " · ${parsed.history.size}条上文"
         val whoLabel = if (parsed.isSelfLast) "我" else "对方"
-        binding.tvSubtitle.text = "内容包 ${pack.version} · $sourceLabel · $whoLabel：${parsed.target.replace("\n", " ").take(16)}$contextHint"
+        binding.tvSubtitle.text = "包${pack.version} · $sourceLabel · $whoLabel：${parsed.target.replace("\n", " ").take(12)}$contextHint · 看原文"
 
         binding.emptyState.visibility = View.GONE
         binding.errorScroll.visibility = View.GONE

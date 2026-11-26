@@ -78,9 +78,9 @@ object ReplyEngine {
 
             val body = JSONObject().apply {
                 put("model", model)
-                put("temperature", if (isAnthropic) 1.0 else 1.2)
+                put("temperature", if (isAnthropic) 1.0 else 1.05)
                 if (!isAnthropic) {
-                    put("presence_penalty", 0.3)
+                    put("presence_penalty", 0.15)
                 }
                 put("max_tokens", 950)
                 put(
@@ -115,7 +115,14 @@ object ReplyEngine {
 
     private fun pickCases(pack: ContentPack, text: String): List<ContentCase> =
         pack.cases
-            .map { c -> c to c.keywords.count { it.isNotBlank() && text.contains(it, ignoreCase = true) } }
+            .map { c ->
+                val hits = c.keywords.count { kw ->
+                    kw.isNotBlank() &&
+                        (kw.length >= 2 || text.length <= 8) &&
+                        text.contains(kw, ignoreCase = true)
+                }
+                c to hits
+            }
             .filter { it.second > 0 }
             .sortedByDescending { it.second }
             .take(2)
@@ -150,12 +157,12 @@ object ReplyEngine {
         }
 
         appendLine()
-        appendLine("下面是真人发出去的话，用来校准语感。学它们的长度、具体度和「不解释」的劲头，不要照抄内容：")
-        pack.anchors.forEach { appendLine("· $it") }
+        appendLine("下面是真人发出去的话，仅用来感受口语短句节奏，严禁把里面无关的话题/物品（如查岗、开车、共享单车等）编进当前回复：")
+        pack.anchors.shuffled().take(10).forEach { appendLine("· $it") }
 
         if (cases.isNotEmpty()) {
             appendLine()
-            appendLine("类似场景里真人怎么回（只参考思路，不要照抄句子）：")
+            appendLine("相近场景思路参考（只学切入角度，不要照抄无关字眼）：")
             cases.forEach { c ->
                 appendLine("· " + c.intent.ifBlank { c.id })
                 c.lines.take(4).forEach { appendLine("  - $it") }
@@ -163,8 +170,9 @@ object ReplyEngine {
         }
 
         appendLine()
+        appendLine("【紧扣上下文硬规则】每一条回复都必须 100% 直接回应用户提供的【本次真实对话】里正在聊的事！严禁脱离上下文自说自话、严禁硬套上面示范句的无关情景。")
         appendLine("【视角与身份硬规则】你是「我」本人，正在微信上给「对方」发消息。每一条输出都必须是「我」发给「对方」的下一句话。")
-        appendLine("严禁站在「对方」视角去回答、反问或吐槽「我」的话（即使最后一条是「我」刚发的问句或表情包、对方暂未回复，也只能替「我」继续对「对方」接话）。")
+        appendLine("严禁站在「对方」视角去回答、反问或吐槽「我」的话（即使最后一条是「我」刚发的问句、对方暂未回复，也只能替「我」继续对「对方」接话）。")
         appendLine("【去 AI 味硬规则】像真人在微信上单手随手打字：短碎口语为主，可以用空格断句、句尾不加句号；严禁每条都写成工整对仗的「前半句，后半句」或三段式金句；严禁「你问我这个，是…」「这么关心我…，要不…」等 AI 模板，禁止生造「一验」「应个急」这种书面凑词。")
         appendLine("5 条里前 2 条只要 4-12 字极简随口接（零端着、不用硬撩），中间 2 条带点生活气小调侃，最后 1 条最多轻递半步。")
 

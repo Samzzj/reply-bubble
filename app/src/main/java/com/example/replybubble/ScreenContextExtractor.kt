@@ -51,6 +51,7 @@ object ScreenContextExtractor {
         "微信", "通讯录", "发现", "我", "消息", "联系人", "动态", "返回",
         "关注", "已关注", "互相关注", "去看看", "互动设置", "查看详情",
         "发消息或按住说话", "输入消息...",
+        "[动画表情]", "[表情]", "[图片]", "[语音]", "[视频]",
         "聊天信息", "切换到按住说话", "切换到键盘", "更多功能", "相册", "拍摄",
         "视频通话", "位置", "红包", "转账", "语音输入", "我的收藏", "名片", "文件", "接龙"
     )
@@ -139,10 +140,17 @@ object ScreenContextExtractor {
             baseBottom
         }
 
+        val hasSolidBubbles = blocks.any {
+            it.bubbleSide != 0 && it.rect.bottom > topCut && it.rect.centerY() < bottomCut
+        }
+
         val captured = ArrayList<CapturedNode>(blocks.size)
         for (block in blocks) {
             val rect = block.rect
             if (rect.bottom <= topCut || rect.centerY() >= bottomCut) continue
+            // 只要屏幕中已识别出微信实色文字气泡，就跳过非气泡区域（表情包/图片内嵌文字）
+            if (hasSolidBubbles && block.bubbleSide == 0) continue
+
             val cleaned = block.text.split('\n')
                 .map { it.trim() }
                 .filter { it.isNotEmpty() && !isNoise(it) }
@@ -154,7 +162,7 @@ object ScreenContextExtractor {
                         text = cleaned,
                         rect = rect,
                         fromDesc = false,
-                        sideHint = if (block.isMyBubble) 2 else 0
+                        sideHint = block.bubbleSide
                     )
                 )
             }
@@ -168,7 +176,7 @@ object ScreenContextExtractor {
                 blocks.size,
                 0,
                 0,
-                "OCR共识别${blocks.size}块，聊天气泡区域为空"
+                "OCR共识别${blocks.size}块，纯文字气泡为空"
             )
         }
 
