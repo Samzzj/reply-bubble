@@ -2,34 +2,23 @@
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:layout_marginBottom="10dp"
+    android:layout_marginBottom="7dp"
     android:background="@drawable/bg_card"
     android:clickable="true"
     android:focusable="true"
     android:foreground="?attr/selectableItemBackground"
     android:orientation="vertical"
-    android:padding="16dp">
-
-    <TextView
-        android:id="@+id/tvTag"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:background="@drawable/bg_pill"
-        android:paddingStart="10dp"
-        android:paddingTop="3dp"
-        android:paddingEnd="10dp"
-        android:paddingBottom="3dp"
-        android:textColor="@color/ios_secondary"
-        android:textSize="12sp"
-        android:textStyle="bold" />
+    android:paddingStart="14dp"
+    android:paddingTop="11dp"
+    android:paddingEnd="14dp"
+    android:paddingBottom="11dp">
 
     <TextView
         android:id="@+id/tvText"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
-        android:lineSpacingExtra="4dp"
+        android:lineSpacingExtra="2dp"
         android:textColor="@color/ios_label"
-        android:textSize="19sp" />
+        android:textSize="16sp" />
 
 </LinearLayout>

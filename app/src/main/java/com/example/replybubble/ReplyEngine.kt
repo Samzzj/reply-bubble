@@ -167,12 +167,19 @@ object ReplyEngine {
         appendLine("严禁站在「对方」视角去回答、反问或吐槽「我」的话（即使最后一条是「我」刚发的问句或表情包、对方暂未回复，也只能替「我」继续对「对方」接话）。")
         appendLine("沿用上文里两人真实的说话口癖、熟度与松弛感：如果平时是互损/开玩笑的熟人语境，回复必须像真人微信秒回一样带点坏笑和生活气，禁止突然端出礼貌客服腔或老实人总结。")
 
+        val targetCount = maxOf(pack.count, 5)
+        val levelHint = if (pack.levels.size >= targetCount) {
+            pack.levels.take(targetCount).joinToString(" / ")
+        } else {
+            "1 / 2 / 3 / 4 / 5（由稳到皮，梯度递进）"
+        }
+
         appendLine()
-        appendLine("输出 ${pack.count} 条，level 依次是 ${pack.levels.joinToString(" / ")}。")
+        appendLine("输出 $targetCount 条，level 依次是 $levelHint。")
         appendLine("长度、标点、句式按上面 voice 的要求执行；超过 45 字一律不合格（接情绪除外）。")
-        appendLine("三条必须用三个不同招式，开头三个字不能重复，不能是同义改写。")
-        appendLine("先用一句短话填 plan 选好切入点和三档招式，再写出真正好笑自然的 replies。只输出 JSON，不要 markdown 代码块，不要任何解释：")
-        append("""{"plan":"语境温度/抓具体词/稳中进各用哪招","replies":[{"level":"${pack.levels.firstOrNull() ?: "稳"}","text":"..."}]}""")
+        appendLine("${targetCount}条必须用不同招式和不同角度，开头三个字不能重复，不能是同义改写。")
+        appendLine("先用一句短话填 plan 选好切入点和不同招式，再写出真正好笑自然的 replies。只输出 JSON，不要 markdown 代码块，不要任何解释：")
+        append("""{"plan":"语境温度/抓具体词/各条用哪招","replies":[{"level":"1","text":"..."}]}""")
     }
 
     private fun buildUser(

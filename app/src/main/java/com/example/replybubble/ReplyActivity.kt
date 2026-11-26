@@ -69,7 +69,7 @@ class ReplyActivity : AppCompatActivity() {
             loaded = true
             if (lastBatch.isNotEmpty()) {
                 rejectedReplies.addAll(lastBatch)
-                while (rejectedReplies.size > 9) {
+                while (rejectedReplies.size > 15) {
                     rejectedReplies.removeAt(0)
                 }
             }

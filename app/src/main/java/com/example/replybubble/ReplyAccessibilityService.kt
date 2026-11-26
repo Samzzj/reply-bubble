@@ -227,12 +227,16 @@ class ReplyAccessibilityService : AccessibilityService() {
      * 优先 ACTION_SET_TEXT，失败时降级为聚焦 + ACTION_PASTE；仍找不到输入框则复制到剪贴板兜底。
      */
     fun insertReply(text: String, preferredPackage: String?) {
+        val pkgHint = preferredPackage?.takeIf { it.isNotBlank() && it != "ocr.screen" }
         insertJob?.cancel()
         insertJob = scope.launch {
-            delay(160L)
+            delay(180L)
+            var sawAnyRoot = false
             repeat(15) {
-                val root = findTargetRoot(preferredPackage)
-                if (root != null) {
+                val roots = collectTargetRoots(pkgHint)
+                if (roots.isNotEmpty()) sawAnyRoot = true
+                for (root in roots) {
+                    runCatching { root.refresh() }
                     val input = findBestInputNode(root)
                     if (input != null && performInsert(input, text)) {
                         Toast.makeText(this@ReplyAccessibilityService, "已填入输入框", Toast.LENGTH_SHORT).show()
@@ -242,9 +246,14 @@ class ReplyAccessibilityService : AccessibilityService() {
                 delay(100L)
             }
             copyFallback(text)
+            val tip = if (!sawAnyRoot) {
+                "系统限制读取该应用窗口，已复制到剪贴板"
+            } else {
+                "未检测到文字输入框（若为语音条请切回键盘），已复制到剪贴板"
+            }
             Toast.makeText(
                 this@ReplyAccessibilityService,
-                "未检测到文字输入框，已复制到剪贴板",
+                tip,
                 Toast.LENGTH_SHORT
             ).show()
         }
@@ -323,9 +332,6 @@ class ReplyAccessibilityService : AccessibilityService() {
         addIfValid(active)
         return roots
     }
-
-    private fun findTargetRoot(preferredPackage: String?): AccessibilityNodeInfo? =
-        collectTargetRoots(preferredPackage).firstOrNull()
 
     private fun findBestInputNode(root: AccessibilityNodeInfo): AccessibilityNodeInfo? {
         root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)?.let { focused ->
