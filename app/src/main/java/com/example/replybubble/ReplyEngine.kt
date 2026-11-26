@@ -117,12 +117,28 @@ object ReplyEngine {
         appendLine(pack.prompt.attitude)
         appendLine()
         appendLine(pack.prompt.judge)
+
+        if (pack.prompt.moves.isNotBlank()) {
+            appendLine()
+            appendLine(pack.prompt.moves)
+        }
+
         appendLine()
         appendLine(pack.prompt.voice)
 
         if (pack.prompt.banned.isNotEmpty()) {
             appendLine()
-            appendLine("这些词一个都不要出现：" + pack.prompt.banned.joinToString("、"))
+            appendLine("硬禁词，出现即重写：" + pack.prompt.banned.joinToString("、"))
+        }
+        if (pack.prompt.bannedSoft.isNotEmpty()) {
+            appendLine(
+                "位置禁词（可以用，但不能单独成句、不能当回应主体、不能连用两条）：" +
+                    pack.prompt.bannedSoft.joinToString("、")
+            )
+        }
+        if (pack.prompt.gate.isNotBlank()) {
+            appendLine()
+            appendLine(pack.prompt.gate)
         }
 
         appendLine()
@@ -140,7 +156,8 @@ object ReplyEngine {
 
         appendLine()
         appendLine("输出 ${pack.count} 条，level 依次是 ${pack.levels.joinToString(" / ")}。")
-        appendLine("每条 12-30 个字，最多 3 句，能直接发出去。")
+        appendLine("长度、标点、句式按上面 voice 的要求执行；超过 45 字一律不合格（接情绪除外）。")
+        appendLine("三条必须用三个不同招式，开头三个字不能重复，不能是同义改写。")
         appendLine("只输出 JSON，不要 markdown 代码块，不要任何解释：")
         append("""{"replies":[{"level":"${pack.levels.firstOrNull() ?: "稳"}","text":"..."}]}""")
     }

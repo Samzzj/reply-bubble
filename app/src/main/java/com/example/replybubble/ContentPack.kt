@@ -7,7 +7,11 @@ data class ContentPrompt(
     val attitude: String,
     val judge: String,
     val voice: String,
-    val banned: List<String>
+    val banned: List<String>,
+    // v3 内容包新增：招式库、自检闸门、位置禁词
+    val moves: String = "",
+    val gate: String = "",
+    val bannedSoft: List<String> = emptyList()
 )
 
 data class ContentCase(
@@ -106,6 +110,11 @@ data class ContentPack(
                     voice = p.optString("voice"),
                     banned = p.optJSONArray("banned")?.let { a ->
                         (0 until a.length()).map { a.optString(it) }
+                    } ?: emptyList(),
+                    moves = p.optString("moves"),
+                    gate = p.optString("gate"),
+                    bannedSoft = p.optJSONArray("banned_soft")?.let { a ->
+                        (0 until a.length()).map { a.optString(it) }
                     } ?: emptyList()
                 ),
                 anchors = o.optJSONArray("anchors")?.let { a ->
@@ -113,7 +122,8 @@ data class ContentPack(
                 } ?: emptyList(),
                 cases = cases,
                 count = c.optInt("count", 3),
-                levels = c.optJSONArray("levels")?.let { a ->
+                // v3 用 tiers，旧版用 levels，两个都认
+                levels = (c.optJSONArray("levels") ?: c.optJSONArray("tiers"))?.let { a ->
                     (0 until a.length()).map { a.optString(it) }
                 } ?: listOf("稳", "中", "进")
             )
