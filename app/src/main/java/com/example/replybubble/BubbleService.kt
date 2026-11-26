@@ -245,6 +245,10 @@ class BubbleService : Service() {
                             ReplyActivity.EXTRA_TARGET_PACKAGE,
                             ReplyAccessibilityService.lastExternalPackage.orEmpty()
                         )
+                        putExtra(
+                            ReplyActivity.EXTRA_CAPTURE_DIAG,
+                            ReplyAccessibilityService.lastDiagnostic.orEmpty()
+                        )
                     }
                 }
             startActivity(intent)

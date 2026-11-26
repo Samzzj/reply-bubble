@@ -10,6 +10,16 @@ data class ScreenSnapshot(
     val lineCount: Int
 )
 
+data class ExtractResult(
+    val snapshot: ScreenSnapshot?,
+    val packageName: String,
+    val totalNodes: Int,
+    val rawTextNodes: Int,
+    val rawDescNodes: Int,
+    val afterFilterNodes: Int,
+    val reason: String
+)
+
 /**
  * 从当前聊天窗口的无障碍节点树中提取对话内容。
  * 1. 过滤顶部栏、底部输入栏及紧贴输入框上方的快捷功能条（如「早上好 / 一起听」）；
@@ -18,9 +28,12 @@ data class ScreenSnapshot(
  */
 object ScreenContextExtractor {
 
+    private const val MAX_DEPTH = 64
+
     private data class CapturedNode(
         val text: String,
-        val rect: Rect
+        val rect: Rect,
+        val fromDesc: Boolean = false
     )
 
     private val TIME_ONLY = Regex(
@@ -35,7 +48,9 @@ object ScreenContextExtractor {
         "已读", "未读", "已发送", "撤回了一条消息", "以上是打招呼的内容",
         "微信", "通讯录", "发现", "我", "消息", "联系人", "动态", "返回",
         "关注", "已关注", "互相关注", "去看看", "互动设置", "查看详情",
-        "发消息或按住说话", "输入消息..."
+        "发消息或按住说话", "输入消息...",
+        "聊天信息", "切换到按住说话", "切换到键盘", "更多功能", "相册", "拍摄",
+        "视频通话", "位置", "红包", "转账", "语音输入", "我的收藏", "名片", "文件", "接龙"
     )
 
     private val ACTION_SUFFIX = listOf("去看看", "看看>", "去商城", "互动设置", "点击查看", "立即查看")
@@ -45,10 +60,17 @@ object ScreenContextExtractor {
         screenWidth: Int,
         screenHeight: Int,
         density: Float
-    ): ScreenSnapshot? {
+    ): ScreenSnapshot? = extractWithDiagnostic(root, screenWidth, screenHeight, density).snapshot
+
+    fun extractWithDiagnostic(
+        root: AccessibilityNodeInfo,
+        screenWidth: Int,
+        screenHeight: Int,
+        density: Float
+    ): ExtractResult {
         val pkg = root.packageName?.toString().orEmpty()
         if (pkg.isBlank() || pkg == "com.example.replybubble" || pkg == "com.android.systemui") {
-            return null
+            return ExtractResult(null, pkg, 0, 0, 0, 0, "跳过自身或系统界面")
         }
 
         val winRect = Rect()
@@ -68,18 +90,35 @@ object ScreenContextExtractor {
         }
 
         val rawNodes = ArrayList<CapturedNode>()
-        collectTextNodes(root, pkg, topCut, bottomCut, rawNodes)
-        if (rawNodes.isEmpty()) return null
+        val stats = intArrayOf(0) // totalNodes
+        collectTextNodes(root, topCut, bottomCut, 0, stats, rawNodes)
+        val totalNodes = stats[0]
+        val rawTextCount = rawNodes.count { !it.fromDesc }
+        val rawDescCount = rawNodes.count { it.fromDesc }
 
-        val deduped = deduplicate(rawNodes)
+        if (rawNodes.isEmpty()) {
+            val reason = if (totalNodes <= 3) {
+                "系统或该应用限制了无障碍读取界面"
+            } else {
+                "节点树中未发现可读文字节点"
+            }
+            return ExtractResult(null, pkg, totalNodes, 0, 0, 0, reason)
+        }
+
+        val merged = mergeTextAndDesc(rawNodes)
+        val deduped = deduplicate(merged)
             .filter { !isNoise(it.text) }
             .sortedWith(compareBy<CapturedNode> { it.rect.top }.thenBy { it.rect.left })
 
-        if (deduped.isEmpty()) return null
+        if (deduped.isEmpty()) {
+            return ExtractResult(null, pkg, totalNodes, rawTextCount, rawDescCount, 0, "全部文本被噪声规则过滤")
+        }
 
         // 过滤同一水平行排布的控件（快捷回复条、引力签标签组、系统提示+链接行等）
         val singleRowMessages = filterHorizontalUiRows(deduped, editRect, ::dp)
-        if (singleRowMessages.isEmpty()) return null
+        if (singleRowMessages.isEmpty()) {
+            return ExtractResult(null, pkg, totalNodes, rawTextCount, rawDescCount, 0, "同行控件过滤后为空")
+        }
 
         val winW = winRect.width().toFloat()
         val tagged = singleRowMessages.map { node ->
@@ -114,13 +153,16 @@ object ScreenContextExtractor {
 
         val recent = finalLines.takeLast(10)
         val parsed = buildParsedContext(recent)
-        if (parsed.target.isBlank()) return null
+        if (parsed.target.isBlank()) {
+            return ExtractResult(null, pkg, totalNodes, rawTextCount, rawDescCount, finalLines.size, "最终解析目标为空")
+        }
 
-        return ScreenSnapshot(
+        val snap = ScreenSnapshot(
             packageName = pkg,
             parsed = parsed,
             lineCount = recent.size
         )
+        return ExtractResult(snap, pkg, totalNodes, rawTextCount, rawDescCount, recent.size, "ok")
     }
 
     /**
@@ -187,10 +229,11 @@ object ScreenContextExtractor {
 
     private fun findBottomEditableRect(root: AccessibilityNodeInfo, winRect: Rect): Rect? {
         var best: Rect? = null
-        val stack = ArrayDeque<AccessibilityNodeInfo>()
-        stack.add(root)
+        val stack = ArrayDeque<Pair<AccessibilityNodeInfo, Int>>()
+        stack.add(root to 0)
         while (stack.isNotEmpty()) {
-            val node = stack.removeLast()
+            val (node, depth) = stack.removeLast()
+            if (depth > MAX_DEPTH) continue
             if (node.isVisibleToUser) {
                 val isInput = node.isEditable ||
                     node.className?.toString()?.contains("EditText", ignoreCase = true) == true
@@ -203,9 +246,9 @@ object ScreenContextExtractor {
                         }
                     }
                 }
-                for (i in 0 until node.childCount) {
-                    node.getChild(i)?.let { stack.add(it) }
-                }
+            }
+            for (i in 0 until node.childCount) {
+                node.getChild(i)?.let { stack.add(it to depth + 1) }
             }
         }
         return best
@@ -213,31 +256,60 @@ object ScreenContextExtractor {
 
     private fun collectTextNodes(
         node: AccessibilityNodeInfo,
-        targetPkg: String,
         topCut: Int,
         bottomCut: Int,
+        depth: Int,
+        stats: IntArray,
         out: MutableList<CapturedNode>
     ) {
-        if (!node.isVisibleToUser) return
+        if (depth > MAX_DEPTH) return
         val nodePkg = node.packageName?.toString()
         if (nodePkg == "com.example.replybubble" || nodePkg == "com.android.systemui") return
         if (node.isEditable) return
 
-        val rect = Rect()
-        node.getBoundsInScreen(rect)
-        if (rect.width() <= 0 || rect.height() <= 0) return
+        stats[0]++
 
-        val text = node.text?.toString()?.trim()
-        if (!text.isNullOrEmpty() && rect.bottom > topCut && rect.centerY() < bottomCut) {
-            out.add(CapturedNode(text, rect))
+        if (node.isVisibleToUser) {
+            val rect = Rect()
+            node.getBoundsInScreen(rect)
+            if (rect.width() > 0 && rect.height() > 0 && rect.bottom > topCut && rect.centerY() < bottomCut) {
+                val directText = node.text?.toString()?.trim()?.takeIf { it.isNotEmpty() }
+                if (directText != null) {
+                    out.add(CapturedNode(directText, rect, fromDesc = false))
+                } else {
+                    val desc = node.contentDescription?.toString()?.trim()?.takeIf { it.isNotEmpty() }
+                    if (desc != null && isUsableDesc(node, desc)) {
+                        out.add(CapturedNode(desc, rect, fromDesc = true))
+                    }
+                }
+            }
         }
 
         for (i in 0 until node.childCount) {
             node.getChild(i)?.let { child ->
-                collectTextNodes(child, targetPkg, topCut, bottomCut, out)
+                collectTextNodes(child, topCut, bottomCut, depth + 1, stats, out)
             }
         }
     }
+
+    private fun isUsableDesc(node: AccessibilityNodeInfo, desc: String): Boolean {
+        if (desc.endsWith("头像") || desc.endsWith("的头像")) return false
+        val cls = node.className?.toString().orEmpty()
+        if (cls.endsWith(".ImageView") || cls.endsWith(".ImageButton")) return false
+        return true
+    }
+
+    private fun mergeTextAndDesc(nodes: List<CapturedNode>): List<CapturedNode> {
+        val textNodes = nodes.filter { !it.fromDesc }
+        if (textNodes.isEmpty()) return nodes
+        val descNodes = nodes.filter { d ->
+            d.fromDesc && textNodes.none { t -> rectsOverlap(d.rect, t.rect) }
+        }
+        return if (descNodes.isEmpty()) textNodes else textNodes + descNodes
+    }
+
+    private fun rectsOverlap(a: Rect, b: Rect): Boolean =
+        a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom
 
     private fun deduplicate(nodes: List<CapturedNode>): List<CapturedNode> {
         val out = ArrayList<CapturedNode>(nodes.size)

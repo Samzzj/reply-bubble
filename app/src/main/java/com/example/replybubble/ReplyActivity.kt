@@ -28,6 +28,7 @@ class ReplyActivity : AppCompatActivity() {
         const val EXTRA_HISTORY = "extra_history"
         const val EXTRA_IS_SELF_LAST = "extra_is_self_last"
         const val EXTRA_TARGET_PACKAGE = "extra_target_package"
+        const val EXTRA_CAPTURE_DIAG = "extra_capture_diag"
     }
 
     private lateinit var binding: ActivityReplyBinding
@@ -38,6 +39,7 @@ class ReplyActivity : AppCompatActivity() {
     private var generation = 0
     private var screenParsed: ParsedContext? = null
     private var targetPackage: String? = null
+    private var screenDiagnostic: String? = null
     private var fromBubble: Boolean = false
     private var accActive: Boolean = false
 
@@ -79,6 +81,7 @@ class ReplyActivity : AppCompatActivity() {
         accActive = intent?.getBooleanExtra(EXTRA_ACC_ACTIVE, false) == true ||
             ReplyAccessibilityService.isRunning()
         targetPackage = intent?.getStringExtra(EXTRA_TARGET_PACKAGE)?.takeIf { it.isNotBlank() }
+        screenDiagnostic = intent?.getStringExtra(EXTRA_CAPTURE_DIAG)?.takeIf { it.isNotBlank() }
         val fromScreen = intent?.getBooleanExtra(EXTRA_FROM_SCREEN, false) == true
         val target = intent?.getStringExtra(EXTRA_TARGET).orEmpty().trim()
         if (fromScreen && target.isNotEmpty()) {
@@ -165,9 +168,17 @@ class ReplyActivity : AppCompatActivity() {
 
         // 无障碍开启且从悬浮球触发时，若 Intent 还没拿到屏幕内容，再尝试现场抓取一次（避免受瞬时窗口切换影响）
         if (screenParsed == null && fromBubble && accActive && !allowClipboardFallback) {
-            ReplyAccessibilityService.instance?.captureCurrentScreen()?.let { snap ->
+            val snap = ReplyAccessibilityService.instance?.captureCurrentScreen()
+            if (snap != null) {
                 screenParsed = snap.parsed
                 targetPackage = snap.packageName
+            } else {
+                val retryDiag = ReplyAccessibilityService.lastDiagnostic
+                if (screenDiagnostic.isNullOrBlank() ||
+                    (!retryDiag.isNullOrBlank() && !retryDiag.startsWith("未获取到外部应用窗口"))
+                ) {
+                    screenDiagnostic = retryDiag
+                }
             }
         }
 
@@ -179,8 +190,9 @@ class ReplyActivity : AppCompatActivity() {
             if (fromBubble && accActive && !allowClipboardFallback) {
                 val clip = readClipboard()
                 val hasUsableClip = !clip.isNullOrBlank() && clip != Prefs.lastCopied(this)
+                val diagLine = screenDiagnostic?.takeIf { it.isNotBlank() }?.let { "\n\n诊断：$it" }.orEmpty()
                 showError(
-                    "未从当前屏幕识别到聊天文字。\n\n请确认当前处于聊天对话界面（且画面中有文字消息），再重新点一次悬浮球。",
+                    "未从当前屏幕识别到聊天文字。\n\n请确认当前处于聊天对话界面（且画面中有文字消息），再重新点一次悬浮球。$diagLine",
                     showClipboardOption = hasUsableClip
                 )
                 return

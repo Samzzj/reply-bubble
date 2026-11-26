@@ -38,6 +38,10 @@ class ReplyAccessibilityService : AccessibilityService() {
         var lastExternalPackage: String? = null
             private set
 
+        @Volatile
+        var lastDiagnostic: String? = null
+            private set
+
         fun isRunning(): Boolean = instance != null
 
         fun isEnabledInSettings(context: Context): Boolean {
@@ -88,13 +92,39 @@ class ReplyAccessibilityService : AccessibilityService() {
     /** 抓取当前前台外部聊天窗口的屏幕内容 */
     fun captureCurrentScreen(): ScreenSnapshot? {
         val dm = resources.displayMetrics
-        val root = findTargetRoot(preferredPackage = null) ?: return null
-        return ScreenContextExtractor.extract(
-            root = root,
-            screenWidth = dm.widthPixels,
-            screenHeight = dm.heightPixels,
-            density = dm.density
-        )
+        val candidates = collectTargetRoots(preferredPackage = lastExternalPackage)
+        if (candidates.isEmpty()) {
+            val activePkg = rootInActiveWindow?.packageName?.toString().orEmpty().ifBlank { "null" }
+            val winCount = windows?.size ?: 0
+            lastDiagnostic = "未获取到外部应用窗口（active=$activePkg, windows=$winCount）"
+            return null
+        }
+
+        var bestFailure: ExtractResult? = null
+        for (root in candidates) {
+            runCatching { root.refresh() }
+            val res = ScreenContextExtractor.extractWithDiagnostic(
+                root = root,
+                screenWidth = dm.widthPixels,
+                screenHeight = dm.heightPixels,
+                density = dm.density
+            )
+            if (res.snapshot != null) {
+                lastDiagnostic = "ok:${res.snapshot.packageName}"
+                return res.snapshot
+            }
+            if (bestFailure == null ||
+                (res.packageName == lastExternalPackage && bestFailure.packageName != lastExternalPackage) ||
+                res.totalNodes > bestFailure.totalNodes
+            ) {
+                bestFailure = res
+            }
+        }
+
+        lastDiagnostic = bestFailure?.let { f ->
+            "窗口=${f.packageName} · 节点=${f.totalNodes} · 文本=${f.rawTextNodes}+${f.rawDescNodes}（${f.reason}）"
+        }
+        return null
     }
 
     /**
@@ -158,33 +188,44 @@ class ReplyAccessibilityService : AccessibilityService() {
         }
     }
 
-    private fun findTargetRoot(preferredPackage: String?): AccessibilityNodeInfo? {
+    private fun collectTargetRoots(preferredPackage: String?): List<AccessibilityNodeInfo> {
+        val roots = ArrayList<AccessibilityNodeInfo>()
+        val seenWindowIds = HashSet<Int>()
+
+        fun addIfValid(node: AccessibilityNodeInfo?) {
+            if (node == null) return
+            val pkg = node.packageName?.toString().orEmpty()
+            if (pkg.isBlank() || pkg == SELF_PKG || pkg == SYSUI_PKG) return
+            if (seenWindowIds.add(node.windowId)) {
+                roots.add(node)
+            }
+        }
+
         val active = rootInActiveWindow
         val activePkg = active?.packageName?.toString().orEmpty()
-        if (active != null && activePkg.isNotBlank() && activePkg != SELF_PKG && activePkg != SYSUI_PKG) {
-            if (preferredPackage.isNullOrBlank() || activePkg == preferredPackage) {
-                return active
-            }
+        if (preferredPackage.isNullOrBlank() || activePkg == preferredPackage) {
+            addIfValid(active)
         }
 
-        val appRoots = windows.orEmpty()
+        windows.orEmpty()
             .filter { it.type == AccessibilityWindowInfo.TYPE_APPLICATION }
+            .mapNotNull { w -> w.root?.let { r -> Triple(w, r, r.packageName?.toString().orEmpty()) } }
             .sortedWith(
-                compareByDescending<AccessibilityWindowInfo> { it.isFocused }
-                    .thenByDescending { it.isActive }
-                    .thenByDescending { it.layer }
+                compareByDescending<Triple<AccessibilityWindowInfo, AccessibilityNodeInfo, String>> { (_, _, pkg) ->
+                    !preferredPackage.isNullOrBlank() && pkg == preferredPackage
+                }
+                    .thenByDescending { (w, _, _) -> w.isFocused }
+                    .thenByDescending { (w, _, _) -> w.isActive }
+                    .thenByDescending { (w, _, _) -> w.layer }
             )
-            .mapNotNull { it.root }
-            .filter { r ->
-                val p = r.packageName?.toString().orEmpty()
-                p.isNotBlank() && p != SELF_PKG && p != SYSUI_PKG
-            }
+            .forEach { (_, r, _) -> addIfValid(r) }
 
-        if (!preferredPackage.isNullOrBlank()) {
-            appRoots.firstOrNull { it.packageName?.toString() == preferredPackage }?.let { return it }
-        }
-        return appRoots.firstOrNull() ?: if (activePkg != SELF_PKG && activePkg != SYSUI_PKG) active else null
+        addIfValid(active)
+        return roots
     }
+
+    private fun findTargetRoot(preferredPackage: String?): AccessibilityNodeInfo? =
+        collectTargetRoots(preferredPackage).firstOrNull()
 
     private fun findBestInputNode(root: AccessibilityNodeInfo): AccessibilityNodeInfo? {
         root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)?.let { focused ->
@@ -192,11 +233,11 @@ class ReplyAccessibilityService : AccessibilityService() {
         }
 
         val candidates = ArrayList<Pair<AccessibilityNodeInfo, Rect>>()
-        val stack = ArrayDeque<AccessibilityNodeInfo>()
-        stack.add(root)
+        val stack = ArrayDeque<Pair<AccessibilityNodeInfo, Int>>()
+        stack.add(root to 0)
         while (stack.isNotEmpty()) {
-            val node = stack.removeLast()
-            if (!node.isVisibleToUser) continue
+            val (node, depth) = stack.removeLast()
+            if (depth > 64) continue
             if (isUsableInput(node)) {
                 val rect = Rect()
                 node.getBoundsInScreen(rect)
@@ -205,7 +246,7 @@ class ReplyAccessibilityService : AccessibilityService() {
                 }
             }
             for (i in 0 until node.childCount) {
-                node.getChild(i)?.let { stack.add(it) }
+                node.getChild(i)?.let { stack.add(it to depth + 1) }
             }
         }
 
