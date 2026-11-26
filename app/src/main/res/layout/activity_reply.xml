@@ -127,17 +127,40 @@
                 android:layout_height="match_parent"
                 android:visibility="gone">
 
-                <TextView
-                    android:id="@+id/tvError"
+                <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:gravity="center"
-                    android:lineSpacingExtra="5dp"
-                    android:paddingStart="20dp"
-                    android:paddingTop="16dp"
-                    android:paddingEnd="20dp"
-                    android:textColor="@color/ios_secondary"
-                    android:textSize="15sp" />
+                    android:gravity="center_horizontal"
+                    android:orientation="vertical"
+                    android:paddingBottom="16dp">
+
+                    <TextView
+                        android:id="@+id/tvError"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:gravity="center"
+                        android:lineSpacingExtra="5dp"
+                        android:paddingStart="20dp"
+                        android:paddingTop="16dp"
+                        android:paddingEnd="20dp"
+                        android:textColor="@color/ios_secondary"
+                        android:textSize="15sp" />
+
+                    <TextView
+                        android:id="@+id/btnUseClipboard"
+                        android:layout_width="wrap_content"
+                        android:layout_height="44dp"
+                        android:layout_marginTop="16dp"
+                        android:background="@drawable/bg_capsule_soft_blue"
+                        android:gravity="center"
+                        android:paddingStart="20dp"
+                        android:paddingEnd="20dp"
+                        android:text="改用剪贴板内容生成"
+                        android:textColor="@color/ios_blue"
+                        android:textSize="14sp"
+                        android:textStyle="bold"
+                        android:visibility="gone" />
+                </LinearLayout>
             </ScrollView>
 
             <!-- 空状态：还没填 Key -->

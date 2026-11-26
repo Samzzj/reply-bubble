@@ -82,7 +82,7 @@ object ScreenContextExtractor {
         if (singleRowMessages.isEmpty()) return null
 
         val winW = winRect.width().toFloat()
-        val classified = singleRowMessages.mapNotNull { node ->
+        val tagged = singleRowMessages.map { node ->
             val leftMargin = (node.rect.left - winRect.left).toFloat()
             val rightMargin = (winRect.right - node.rect.right).toFloat()
             val centerX = (node.rect.centerX() - winRect.left).toFloat()
@@ -92,27 +92,24 @@ object ScreenContextExtractor {
             val isRight = (rightMargin < winW * 0.25f && centerX > winW * 0.52f) ||
                 (rightMargin < winW * 0.22f && leftMargin > winW * 0.16f && rightMargin + dp(20) < leftMargin)
 
+            val centeredNotice = !isLeft && !isRight &&
+                abs(leftMargin - rightMargin) < winW * 0.14f &&
+                leftMargin > winW * 0.10f && rightMargin > winW * 0.10f &&
+                node.rect.height() <= dp(38) && node.text.length <= 36
+
             when {
-                isLeft && !isRight -> "对方：${node.text}" to true
-                isRight && !isLeft -> "我：${node.text}" to true
-                else -> {
-                    // 居中的单行短系统提示（如「你撤回了一条消息」「聊天气泡上新啦」）丢弃
-                    val centered = abs(leftMargin - rightMargin) < winW * 0.14f &&
-                        leftMargin > winW * 0.10f && rightMargin > winW * 0.10f
-                    val singleLineNotice = node.rect.height() <= dp(38) && node.text.length <= 36
-                    if (centered && singleLineNotice) null else (node.text to false)
-                }
+                isLeft && !isRight -> Triple("对方：${node.text}", true, false)
+                isRight && !isLeft -> Triple("我：${node.text}", true, false)
+                else -> Triple(node.text, false, centeredNotice)
             }
         }
 
-        if (classified.isEmpty()) return null
-
-        // 若已经识别到明确的左右聊天气泡，只保留气泡消息，丢弃夹杂的未对齐 UI 杂项
-        val hasBubbles = classified.any { it.second }
+        // 若已经识别到明确的左右聊天气泡，只保留气泡消息（以及长段落），丢弃夹杂的居中系统提示与短杂项
+        val hasBubbles = tagged.any { it.second }
         val finalLines = if (hasBubbles) {
-            classified.filter { it.second || it.first.length >= 24 }.map { it.first }
+            tagged.filter { it.second || (!it.third && it.first.length >= 24) }.map { it.first }
         } else {
-            classified.map { it.first }
+            tagged.filter { !it.third }.map { it.first }.ifEmpty { tagged.map { it.first } }
         }
 
         val recent = finalLines.takeLast(10)
@@ -224,7 +221,6 @@ object ScreenContextExtractor {
         if (!node.isVisibleToUser) return
         val nodePkg = node.packageName?.toString()
         if (nodePkg == "com.example.replybubble" || nodePkg == "com.android.systemui") return
-        if (nodePkg != null && nodePkg != targetPkg) return
         if (node.isEditable) return
 
         val rect = Rect()

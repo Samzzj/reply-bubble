@@ -169,7 +169,11 @@ class ReplyAccessibilityService : AccessibilityService() {
 
         val appRoots = windows.orEmpty()
             .filter { it.type == AccessibilityWindowInfo.TYPE_APPLICATION }
-            .sortedByDescending { it.isActive }
+            .sortedWith(
+                compareByDescending<AccessibilityWindowInfo> { it.isFocused }
+                    .thenByDescending { it.isActive }
+                    .thenByDescending { it.layer }
+            )
             .mapNotNull { it.root }
             .filter { r ->
                 val p = r.packageName?.toString().orEmpty()

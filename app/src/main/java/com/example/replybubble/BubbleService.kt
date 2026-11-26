@@ -223,10 +223,14 @@ class BubbleService : Service() {
 
     private fun openPanel() {
         try {
-            val snapshot = ReplyAccessibilityService.instance?.captureCurrentScreen()
+            val acc = ReplyAccessibilityService.instance
+            val accActive = acc != null
+            val snapshot = acc?.captureCurrentScreen()
             val intent = Intent(this, ReplyActivity::class.java)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
                 .apply {
+                    putExtra(ReplyActivity.EXTRA_FROM_BUBBLE, true)
+                    putExtra(ReplyActivity.EXTRA_ACC_ACTIVE, accActive)
                     if (snapshot != null) {
                         putExtra(ReplyActivity.EXTRA_FROM_SCREEN, true)
                         putExtra(ReplyActivity.EXTRA_TARGET, snapshot.parsed.target)

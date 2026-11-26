@@ -21,6 +21,8 @@ class ReplyActivity : AppCompatActivity() {
 
     companion object {
         private const val BLUR_RADIUS = 60
+        const val EXTRA_FROM_BUBBLE = "extra_from_bubble"
+        const val EXTRA_ACC_ACTIVE = "extra_acc_active"
         const val EXTRA_FROM_SCREEN = "extra_from_screen"
         const val EXTRA_TARGET = "extra_target"
         const val EXTRA_HISTORY = "extra_history"
@@ -36,6 +38,8 @@ class ReplyActivity : AppCompatActivity() {
     private var generation = 0
     private var screenParsed: ParsedContext? = null
     private var targetPackage: String? = null
+    private var fromBubble: Boolean = false
+    private var accActive: Boolean = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -53,9 +57,13 @@ class ReplyActivity : AppCompatActivity() {
         binding.scrim.setOnClickListener { finish() }
         binding.btnGotoSettings.setOnClickListener { openSettings() }
         binding.btnSettings.setOnClickListener { openSettings() }
+        binding.btnUseClipboard.setOnClickListener {
+            loaded = true
+            load(force = true, allowClipboardFallback = true)
+        }
         binding.btnRetry.setOnClickListener {
             loaded = true
-            load(force = true)
+            load(force = true, allowClipboardFallback = screenParsed == null && !(fromBubble && accActive))
         }
     }
 
@@ -67,6 +75,9 @@ class ReplyActivity : AppCompatActivity() {
     }
 
     private fun parseIntentExtras(intent: Intent?) {
+        fromBubble = intent?.getBooleanExtra(EXTRA_FROM_BUBBLE, false) == true
+        accActive = intent?.getBooleanExtra(EXTRA_ACC_ACTIVE, false) == true ||
+            ReplyAccessibilityService.isRunning()
         targetPackage = intent?.getStringExtra(EXTRA_TARGET_PACKAGE)?.takeIf { it.isNotBlank() }
         val fromScreen = intent?.getBooleanExtra(EXTRA_FROM_SCREEN, false) == true
         val target = intent?.getStringExtra(EXTRA_TARGET).orEmpty().trim()
@@ -144,7 +155,7 @@ class ReplyActivity : AppCompatActivity() {
         }
     }
 
-    private fun load(force: Boolean = false) {
+    private fun load(force: Boolean = false, allowClipboardFallback: Boolean = false) {
         val pack = ContentStore.current(this)
 
         if (Prefs.apiKey(this).isBlank()) {
@@ -152,8 +163,29 @@ class ReplyActivity : AppCompatActivity() {
             return
         }
 
+        // 无障碍开启且从悬浮球触发时，若 Intent 还没拿到屏幕内容，再尝试现场抓取一次（避免受瞬时窗口切换影响）
+        if (screenParsed == null && fromBubble && accActive && !allowClipboardFallback) {
+            ReplyAccessibilityService.instance?.captureCurrentScreen()?.let { snap ->
+                screenParsed = snap.parsed
+                targetPackage = snap.packageName
+            }
+        }
+
         var sourceLabel = "屏幕"
-        val parsed = screenParsed ?: run {
+        val parsed = if (screenParsed != null && !allowClipboardFallback) {
+            screenParsed!!
+        } else {
+            // 只要无障碍开启且是从悬浮球打开，绝不静默拿剪贴板内容覆盖屏幕读屏
+            if (fromBubble && accActive && !allowClipboardFallback) {
+                val clip = readClipboard()
+                val hasUsableClip = !clip.isNullOrBlank() && clip != Prefs.lastCopied(this)
+                showError(
+                    "未从当前屏幕识别到聊天文字。\n\n请确认当前处于聊天对话界面（且画面中有文字消息），再重新点一次悬浮球。",
+                    showClipboardOption = hasUsableClip
+                )
+                return
+            }
+
             sourceLabel = "剪贴板"
             val raw = readClipboard()
             if (raw.isNullOrBlank()) {
@@ -224,11 +256,12 @@ class ReplyActivity : AppCompatActivity() {
         binding.btnRetry.isEnabled = false
     }
 
-    private fun showError(message: String) {
+    private fun showError(message: String, showClipboardOption: Boolean = false) {
         binding.loading.visibility = View.GONE
         binding.list.visibility = View.GONE
         binding.emptyState.visibility = View.GONE
         binding.tvError.text = message
+        binding.btnUseClipboard.visibility = if (showClipboardOption) View.VISIBLE else View.GONE
         binding.errorScroll.visibility = View.VISIBLE
         binding.btnRetry.isEnabled = true
     }
